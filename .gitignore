@@ -1,0 +1,17 @@
+*.o
+src/cashewd
+cashew-*.tar.gz
+Makefile.in
+Makefile
+aclocal.m4
+autom4te.cache/
+config.h.in
+config.h
+config.log
+config.status
+configure
+depcomp
+install-sh
+missing
+stamp-h1
+.deps/
