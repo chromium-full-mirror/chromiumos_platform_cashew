@@ -1,0 +1,15 @@
+<tp:spec
+   xmlns:tp="http://telepathy.freedesktop.org/wiki/DbusSpec#extensions-v0"
+   xmlns:xi="http://www.w3.org/2001/XInclude">
+
+  <tp:title>Cashew D-Bus Interface Specification</tp:title>
+  <tp:version>0.1</tp:version>
+  <tp:copyright>Copyright (c) 2010 The Chromium OS Authors. All rights reserved.</tp:copyright>
+
+  <tp:license xmlns="http://www.w3.org/1999/xhtml">
+    <p>Use of this source code is governed by a BSD-style license that can be
+       found in the LICENSE file.</p>
+  </tp:license>
+
+  <xi:include href="cashew.xml"/>
+</tp:spec>

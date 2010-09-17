@@ -4,7 +4,20 @@
 
 sbin_PROGRAMS = cashewd
 
-cashewd_SOURCES = main.cc
+cashewd_SOURCES = \
+  cashew_server.h \
+  cashew_server.cc \
+  main.cc
+
+# D-Bus server stub generation
+DBUSXX_XML2CPP = dbusxx-xml2cpp
+cashew_server_glue.h: $(top_srcdir)/introspection/cashew.xml
+	$(DBUSXX_XML2CPP) $^ --adaptor=$@
+
+BUILT_SOURCES = \
+  cashew_server_glue.h
+
+CLEANFILES = $(BUILT_SOURCES)
 
 # manually defining these instead of getting them via autoconf, because gflags
 # has no pkg-config file
@@ -20,5 +33,3 @@ cashewd_LDADD = \
   @DBUS_CPP_LIBS@ \
   $(GFLAGS_LIBS) \
   @GLOG_LIBS@
-
-EXTRA_DIST = cashew.conf

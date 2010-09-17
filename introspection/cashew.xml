@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<node name="/" xmlns:tp="http://telepathy.freedesktop.org/wiki/DbusSpec#extensions-v0">
+  <interface name="org.chromium.Cashew">
+    <method name="IsAlive">
+      <tp:docstring>
+        Test method to verify that Cashew service is working.
+      </tp:docstring>
+      <arg name="result" type="b" direction="out">
+	<tp:docstring>
+	  Boolean indicating whether Cashew service is alive.
+	</tp:docstring>
+      </arg>
+    </method>
+  </interface>
+</node>

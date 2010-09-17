@@ -13,6 +13,8 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "src/cashew_server.h"
+
 namespace cashew {
 
 typedef int Signal;
@@ -29,12 +31,14 @@ int InstallSignalHandler(const Signal signal,
   return sigaction(signal, &action, NULL);
 }
 
-static DBus::BusDispatcher *g_dispatcher = NULL;
+static DBus::BusDispatcher *dispatcher = NULL;
+
+static CashewServer *server = NULL;
 
 static void OnSignal(int signal) {
   DLOG(INFO) << "received signal " << signal;
-  if (g_dispatcher) {
-    g_dispatcher->leave();
+  if (dispatcher) {
+    dispatcher->leave();
   }
 }
 
@@ -66,9 +70,11 @@ int InstallSignalHandlers() {
 // should not be called while event loop is running
 static void CleanUpForExit() {
   DLOG(INFO) << "cleaning up";
+  delete server;
+  server = NULL;
   DBus::default_dispatcher = NULL;
-  DBus::BusDispatcher *dispatcher_to_delete = g_dispatcher;
-  g_dispatcher = NULL;
+  DBus::BusDispatcher *dispatcher_to_delete = dispatcher;
+  dispatcher = NULL;
   delete dispatcher_to_delete;
   // TODO(vlaviano): uncomment when we get a newer version of glog
   // google::ShutdownGoogleLogging();
@@ -84,19 +90,27 @@ int main(int argc, char *argv[]) {
   LOG(INFO) << PACKAGE_STRING;
 
   DLOG(INFO) << "creating dbus dispatcher";
-  cashew::g_dispatcher = new(std::nothrow) DBus::BusDispatcher();
-  if (!cashew::g_dispatcher) {
+  cashew::dispatcher = new(std::nothrow) DBus::BusDispatcher();
+  if (cashew::dispatcher == NULL) {
     LOG(ERROR) << "couldn't create dbus dispatcher";
     cashew::CleanUpForExit();
     exit(EXIT_FAILURE);
   }
-  DBus::default_dispatcher = cashew::g_dispatcher;
+  DBus::default_dispatcher = cashew::dispatcher;
 
   // TODO(vlaviano): policies
 
   // TODO(vlaviano): back-end carrier apis
 
-  // TODO(vlaviano): front-end dbus api
+  DLOG(INFO) << "creating cashew server";
+  DBus::Connection conn = DBus::Connection::SystemBus();
+  conn.request_name(cashew::CashewServer::kServiceName);
+  cashew::server = new(std::nothrow) cashew::CashewServer(conn);
+  if (cashew::server == NULL) {
+    LOG(ERROR) << "couldn't create cashew server";
+    cashew::CleanUpForExit();
+    exit(EXIT_FAILURE);
+  }
 
   if (cashew::InstallSignalHandlers() < 0) {
     LOG(ERROR) << "couldn't install signal handlers";
@@ -105,7 +119,7 @@ int main(int argc, char *argv[]) {
   }
 
   DLOG(INFO) << "entering event loop";
-  cashew::g_dispatcher->enter();
+  cashew::dispatcher->enter();
   DLOG(INFO) << "exited event loop";
   cashew::CleanUpForExit();
   exit(EXIT_SUCCESS);
