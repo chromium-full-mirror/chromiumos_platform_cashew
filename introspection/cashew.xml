@@ -2,6 +2,104 @@
 
 <node name="/" xmlns:tp="http://telepathy.freedesktop.org/wiki/DbusSpec#extensions-v0">
   <interface name="org.chromium.Cashew">
+
+    <tp:simple-type name="Timestamp" type="x">
+      <tp:docstring>
+        A 64-bit integer representing time in seconds since the Epoch.
+      </tp:docstring>
+    </tp:simple-type>
+
+    <tp:simple-type name="Bytes" type="x">
+      <tp:docstring>
+        A 64-bit integer representing a byte count.
+      </tp:docstring>
+    </tp:simple-type>
+
+    <tp:struct name="DataPlan" array-name="DataPlansList">
+      <tp:docstring>
+        A struct representing a data plan for a cellular service. 
+	Some fields are not always present, so this is sent as a dict.
+      </tp:docstring>
+      <tp:member name="CellularPlanName" type="s">
+        <tp:docstring>
+          Human-friendly plan name
+	</tp:docstring>
+      </tp:member>
+      <tp:member name="CellularPlanType" type="s">
+        <tp:docstring>
+          Plan type.  One of: UNLIMITED, METERED_PAID, METERED_BASE.
+	</tp:docstring>
+      </tp:member>
+      <tp:member name="CellularPlanUpdateTime" type="x" tp:type="Timestamp">
+        <tp:docstring>
+          Timestamp indicating freshness of plan data.
+	</tp:docstring>
+      </tp:member>
+      <tp:member name="CellularPlanStart" type="x" tp:type="Timestamp">
+        <tp:docstring>
+          Timestamp indicating time at which plan becomes active.
+	</tp:docstring>
+      </tp:member>
+      <tp:member name="CellularPlanEnd" type="x" tp:type="Timestamp">
+        <tp:docstring>
+          Timestamp indicating time at which plan expires.
+	</tp:docstring>
+      </tp:member>
+      <tp:member name="CellularPlanDataBytes" type="x" tp:type="Bytes">
+        <tp:docstring>
+          Max number of bytes available during plan period.
+	</tp:docstring>
+      </tp:member>
+      <tp:member name="CellularDataBytesUsed" type="x" tp:type="Bytes">
+        <tp:docstring>
+          Number of bytes already consumed during plan period.
+	</tp:docstring>
+      </tp:member>
+    </tp:struct>
+
+    <signal name="DataPlansUpdate">
+      <tp:docstring>
+        Update containing data plan info for a cellular service.
+      </tp:docstring>
+      <arg name="service" type="s">
+        <tp:docstring>
+          The dbus path of the cellular service to which this update pertains.
+        </tp:docstring>
+      </arg>
+      <arg name="plans" type="aa{sv}" tp:type="DataPlansList">
+        <tp:docstring>
+          A list of plan structs describing the data plans for |service|.
+        </tp:docstring>
+      </arg>
+    </signal>
+
+    <method name="GetDataPlans">
+      <tp:docstring>
+        Get data plan info for a cellular service.
+      </tp:docstring>
+      <arg name="service" type="s" direction="in">
+        <tp:docstring>
+          The dbus path of the cellular service for which caller wants info.
+        </tp:docstring>
+      </arg>
+      <arg name="plans" type="aa{sv}" direction="out" tp:type="DataPlansList">
+        <tp:docstring>
+          A list of plan structs describing the data plans for |service|.
+        </tp:docstring>
+      </arg>
+    </method>
+
+    <method name="RequestDataPlansUpdate">
+      <tp:docstring>
+        Request that a DataPlansUpdate signal be sent for a cellular service.
+      </tp:docstring>
+      <arg name="service" type="s" direction="in">
+        <tp:docstring>
+          The dbus path of the cellular service for which caller wants info.
+        </tp:docstring>
+      </arg>
+    </method>
+
     <method name="IsAlive">
       <tp:docstring>
         Test method to verify that Cashew service is working.
