@@ -11,6 +11,7 @@ PKG_CHECK_MODULES([GLOG], [libglog])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([
     Makefile
+    extrospection/Makefile
     introspection/Makefile
     src/Makefile
 ])

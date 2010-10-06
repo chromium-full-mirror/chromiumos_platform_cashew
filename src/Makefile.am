@@ -7,6 +7,14 @@ sbin_PROGRAMS = cashewd
 cashewd_SOURCES = \
   cashew_server.h \
   cashew_server.cc \
+  data_plan.h \
+  data_plan.cc \
+  device.h \
+  device.cc \
+  service.h \
+  service.cc \
+  service_manager.h \
+  service_manager.cc \
   main.cc
 
 # D-Bus server stub generation
@@ -14,22 +22,38 @@ DBUSXX_XML2CPP = dbusxx-xml2cpp
 cashew_server_glue.h: $(top_srcdir)/introspection/cashew.xml
 	$(DBUSXX_XML2CPP) $^ --adaptor=$@
 
+# D-Bus client stub generation
+flimflam_device_client_glue.h: $(top_srcdir)/extrospection/flimflam-device.xml
+	$(DBUSXX_XML2CPP) $^ --proxy=$@
+flimflam_manager_client_glue.h: $(top_srcdir)/extrospection/flimflam-manager.xml
+	$(DBUSXX_XML2CPP) $^ --proxy=$@
+flimflam_service_client_glue.h: $(top_srcdir)/extrospection/flimflam-service.xml
+	$(DBUSXX_XML2CPP) $^ --proxy=$@
+
 BUILT_SOURCES = \
-  cashew_server_glue.h
+  cashew_server_glue.h \
+  flimflam_device_client_glue.h \
+  flimflam_manager_client_glue.h \
+  flimflam_service_client_glue.h
 
 CLEANFILES = $(BUILT_SOURCES)
 
-# manually defining these instead of getting them via autoconf, because gflags
-# has no pkg-config file
+# manually defining info for libs with no pkg-config file
+
+LIBBASE_CFLAGS =
+LIBBASE_LIBS = -lbase
+
 GFLAGS_CFLAGS =
 GFLAGS_LIBS = -lgflags
 
 cashewd_CPPFLAGS = -Wall -Werror \
+  $(LIBBASE_CFLAGS) \
   @DBUS_CPP_CFLAGS@ \
   $(GFLAGS_CFLAGS) \
   @GLOG_CFLAGS@
 
 cashewd_LDADD = \
+  $(LIBBASE_LIBS) \
   @DBUS_CPP_LIBS@ \
   $(GFLAGS_LIBS) \
   @GLOG_LIBS@

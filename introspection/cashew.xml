@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 
-<node name="/" xmlns:tp="http://telepathy.freedesktop.org/wiki/DbusSpec#extensions-v0">
+<node xmlns:tp="http://telepathy.freedesktop.org/wiki/DbusSpec#extensions-v0">
   <interface name="org.chromium.Cashew">
 
     <tp:simple-type name="Timestamp" type="x">
@@ -87,6 +87,11 @@
           A list of plan structs describing the data plans for |service|.
         </tp:docstring>
       </arg>
+      <tp:possible-errors>
+        <tp:error name="org.chromium.Cashew.Error.ServiceUnknown">
+	  The service path does not correspond to a known service.
+	</tp:error>
+      </tp:possible-errors>
     </method>
 
     <method name="RequestDataPlansUpdate">
@@ -98,6 +103,11 @@
           The dbus path of the cellular service for which caller wants info.
         </tp:docstring>
       </arg>
+      <tp:possible-errors>
+        <tp:error name="org.chromium.Cashew.Error.ServiceUnknown">
+	  The service path does not correspond to a known service.
+	</tp:error>
+      </tp:possible-errors>
     </method>
 
     <method name="IsAlive">

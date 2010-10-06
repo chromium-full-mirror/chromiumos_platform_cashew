@@ -13,28 +13,29 @@
 #include <dbus-c++/dbus.h>  // NOLINT
 
 #include "src/cashew_server_glue.h"
+#include "src/data_plan.h"
+#include "src/service.h"
+#include "src/service_manager.h"
 
 namespace cashew {
-
-typedef std::map<std::string, DBus::Variant> DataPlan;
-typedef std::vector<DataPlan> DataPlanList;
 
 // Implements Cashew D-Bus API
 class CashewServer : public org::chromium::Cashew_adaptor,
                      public DBus::IntrospectableAdaptor,
                      public DBus::ObjectAdaptor {
   public:
-    explicit CashewServer(DBus::Connection& connection);  // NOLINT
-    virtual ~CashewServer() {}
+    CashewServer(DBus::Connection& connection,  // NOLINT
+                 const ServiceManager& service_manager);
+    virtual ~CashewServer();
 
     // Cashew D-Bus API methods
 
     // Get data plan info for a cellular service
-    virtual DataPlanList GetDataPlans(const std::string& service,
-                                      DBus::Error& error);  // NOLINT
+    virtual DBusDataPlanList GetDataPlans(const std::string& service_path,
+                                          DBus::Error& error);  // NOLINT
 
     // Request that a DataPlansUpdate signal be sent for a cellular service
-    virtual void RequestDataPlansUpdate(const std::string& service,
+    virtual void RequestDataPlansUpdate(const std::string& service_path,
                                         DBus::Error& error);  // NOLINT
 
     // Test method to verify that Cashew service is working
@@ -44,11 +45,10 @@ class CashewServer : public org::chromium::Cashew_adaptor,
     static const char* kServicePath;
 
   private:
-    // Emit a DataPlansUpdate signal for a service
-    void EmitDataPlansUpdateSignal(const std::string& service);
+    const ServiceManager& service_manager_;
 
-    // Fill in data plan with hardcoded data for testing
-    void GetHardcodedDataPlan(DataPlan* data_plan);
+    // Emit a DataPlansUpdate signal for a service
+    void EmitDataPlansUpdateSignal(const Service& service);
 
     DISALLOW_COPY_AND_ASSIGN(CashewServer);
 };

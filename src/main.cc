@@ -14,6 +14,7 @@
 #include <glog/logging.h>
 
 #include "src/cashew_server.h"
+#include "src/service_manager.h"
 
 namespace cashew {
 
@@ -34,6 +35,8 @@ int InstallSignalHandler(const Signal signal,
 static DBus::BusDispatcher *dispatcher = NULL;
 
 static CashewServer *server = NULL;
+
+static ServiceManager *service_manager = NULL;
 
 static void OnSignal(int signal) {
   DLOG(INFO) << "received signal " << signal;
@@ -72,6 +75,8 @@ static void CleanUpForExit() {
   DLOG(INFO) << "cleaning up";
   delete server;
   server = NULL;
+  delete service_manager;
+  service_manager = NULL;
   DBus::default_dispatcher = NULL;
   DBus::BusDispatcher *dispatcher_to_delete = dispatcher;
   dispatcher = NULL;
@@ -102,10 +107,22 @@ int main(int argc, char *argv[]) {
 
   // TODO(vlaviano): back-end carrier apis
 
+  DLOG(INFO) << "creating service manager";
+  DBus::Connection client_conn = DBus::Connection::SystemBus();
+  cashew::service_manager = new(std::nothrow) cashew::ServiceManager(
+      client_conn);
+  if (cashew::service_manager == NULL) {
+    LOG(ERROR) << "couldn't create service manager";
+    cashew::CleanUpForExit();
+    exit(EXIT_FAILURE);
+  }
+
   DLOG(INFO) << "creating cashew server";
-  DBus::Connection conn = DBus::Connection::SystemBus();
-  conn.request_name(cashew::CashewServer::kServiceName);
-  cashew::server = new(std::nothrow) cashew::CashewServer(conn);
+  // TODO(vlaviano): can we share a single conn for client and server roles?
+  DBus::Connection server_conn = DBus::Connection::SystemBus();
+  server_conn.request_name(cashew::CashewServer::kServiceName);
+  cashew::server = new(std::nothrow) cashew::CashewServer(server_conn,
+      *cashew::service_manager);
   if (cashew::server == NULL) {
     LOG(ERROR) << "couldn't create cashew server";
     cashew::CleanUpForExit();
