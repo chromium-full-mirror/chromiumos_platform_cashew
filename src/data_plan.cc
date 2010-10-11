@@ -4,23 +4,41 @@
 
 #include "src/data_plan.h"
 
+#include <time.h>
+
 #include <glog/logging.h>
 
 namespace cashew {
 
 // libcros CellularDataPlan property names
-static const char* kCellularDataPlanName = "CellularPlanName";
-static const char* kCellularDataPlanType = "CellularPlanType";
-static const char* kCellularDataPlanUpdateTime = "CellularPlanUpdateTime";
-static const char* kCellularDataPlanStartTime = "CellularPlanStart";
-static const char* kCellularDataPlanEndTime = "CellularPlanEnd";
-static const char* kCellularDataPlanDataBytesMax = "CellularPlanDataBytes";
-static const char* kCellularDataPlanDataBytesUsed = "CellularDataBytesUsed";
+// (what we send to libcros)
+static const char *kCellularDataPlanName = "CellularPlanName";
+static const char *kCellularDataPlanType = "CellularPlanType";
+static const char *kCellularDataPlanUpdateTime = "CellularPlanUpdateTime";
+static const char *kCellularDataPlanStartTime = "CellularPlanStart";
+static const char *kCellularDataPlanEndTime = "CellularPlanEnd";
+static const char *kCellularDataPlanDataBytesMax = "CellularPlanDataBytes";
+static const char *kCellularDataPlanDataBytesUsed = "CellularDataBytesUsed";
 
 // libcros CellularDataPlan type values
-static const char* kCellularDataPlanTypeUnlimited = "UNLIMITED";
-static const char* kCellularDataPlanTypeMeteredFree = "METERED_BASE";
-static const char* kCellularDataPlanTypeMeteredPaid = "METERED_PAID";
+static const char *kCellularDataPlanTypeUnlimited = "UNLIMITED";
+static const char *kCellularDataPlanTypeMeteredFree = "METERED_BASE";
+static const char *kCellularDataPlanTypeMeteredPaid = "METERED_PAID";
+
+// Chromium OS Usage API Data Plan property names
+// (what we receive from carrier usage API)
+static const char *kCrosUsageDataPlanLastUpdateProperty = "lastUpdate";
+static const char *kCrosUsageDataPlanNameProperty = "planName";
+static const char *kCrosUsageDataPlanTypeProperty = "planType";
+static const char *kCrosUsageDataPlanMaxBytesProperty = "maxBytes";
+static const char *kCrosUsageDataPlanUsedBytesProperty = "usedBytes";
+static const char *kCrosUsageDataPlanEndTimeProperty = "expirationTime";
+static const char *kCrosUsageDataPlanStartTimeProperty = "startTime";
+
+// Chromium OS Usage API Data Plan type values
+static const char *kCrosUsageDataPlanTypeUnlimited = "UNLIMITED";
+static const char *kCrosUsageDataPlanTypeMeteredFree = "METERED_FREE";
+static const char *kCrosUsageDataPlanTypeMeteredPaid = "METERED_PAID";
 
 DataPlan::DataPlan(const std::string& name, DataPlan::Type type,
                    base::Time update_time, base::Time start_time,
@@ -66,9 +84,10 @@ DBusDataPlan DataPlan::ToDBusFormat() const {
   DBusDataPlan plan;
   // Indexing into map w/ nonexistent key causes empty DBus::Variant to be
   // created and inserted. We then fill in the desired value via its writer
-  // DBus::MessageIterator.
+  // DBus::MessageIter.
   plan[kCellularDataPlanName].writer().append_string(name_.c_str());
-  plan[kCellularDataPlanType].writer().append_string(TypeToString(type_));
+  plan[kCellularDataPlanType].writer().append_string(
+      TypeToLibcrosString(type_));
   plan[kCellularDataPlanUpdateTime].writer().append_int64(
       update_time_.ToInternalValue());
   plan[kCellularDataPlanStartTime].writer().append_int64(
@@ -84,9 +103,129 @@ DBusDataPlan DataPlan::ToDBusFormat() const {
   return plan;
 }
 
+// static
+DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value) {
+  DCHECK(value != NULL);
+  std::string last_update_iso8601;
+  if (!value->GetString(kCrosUsageDataPlanLastUpdateProperty,
+                        &last_update_iso8601)) {
+    LOG(WARNING) << "FromDictionaryValue: no last update property";
+    return NULL;
+  }
+  DLOG(INFO) << "FromDictionaryValue: last update = " << last_update_iso8601;
+  base::Time last_update;
+  if (!TimeFromISO8601UTC(last_update_iso8601, &last_update)) {
+    LOG(WARNING) << "FromDictionaryValue: could not convert last update time";
+    return NULL;
+  }
+
+  std::string plan_name;
+  if (!value->GetString(kCrosUsageDataPlanNameProperty, &plan_name)) {
+    LOG(WARNING) << "FromDictionaryValue: no plan name property";
+    return NULL;
+  }
+  DLOG(INFO) << "FromDictionaryValue: plan name = " << plan_name;
+
+  std::string plan_type_string;
+  if (!value->GetString(kCrosUsageDataPlanTypeProperty, &plan_type_string)) {
+    LOG(WARNING) << "FromDictionaryValue: no plan type property";
+    return NULL;
+  }
+  DLOG(INFO) << "FromDictionaryValue: plan type string = " << plan_type_string;
+  Type plan_type;
+  if (!CrosUsageStringToType(plan_type_string, &plan_type)) {
+    LOG(WARNING) << "FromDictionaryValue: invalid plan type string: "
+        << plan_type_string;
+    return NULL;
+  }
+  DLOG(INFO) << "FromDictionaryValue: converted plan type string to type "
+      << plan_type;
+
+  int max_bytes = 0;
+  // we only expect max bytes for metered plans
+  if (plan_type != kTypeUnlimited) {
+    if (!value->GetInteger(kCrosUsageDataPlanMaxBytesProperty, &max_bytes)) {
+      LOG(WARNING) << "FromDictionaryValue: no max bytes property";
+      return NULL;
+    }
+    if (max_bytes < 0) {
+      LOG(WARNING) << "FromDictionaryValue: max bytes is negative";
+      return NULL;
+    }
+    DLOG(INFO) << "FromDictionaryValue: max bytes = " << max_bytes;
+  }
+
+  int used_bytes = 0;
+  if (!value->GetInteger(kCrosUsageDataPlanUsedBytesProperty, &used_bytes)) {
+    LOG(WARNING) << "FromDictionaryValue: no used bytes property";
+    return NULL;
+  }
+  if (used_bytes < 0) {
+    LOG(WARNING) << "FromDictionaryValue: used bytes is negative";
+    return NULL;
+  }
+  DLOG(INFO) << "FromDictionaryValue: used bytes = " << used_bytes;
+
+  std::string start_time_iso8601;
+  if (!value->GetString(kCrosUsageDataPlanStartTimeProperty,
+                        &start_time_iso8601)) {
+    LOG(WARNING) << "FromDictionaryValue: no start time property";
+    return NULL;
+  }
+  DLOG(INFO) << "FromDictionaryValue: start time = " << start_time_iso8601;
+  base::Time start_time;
+  if (!TimeFromISO8601UTC(start_time_iso8601, &start_time)) {
+    LOG(WARNING) << "FromDictionaryValue: could not convert start time";
+    return NULL;
+  }
+
+  std::string end_time_iso8601;
+  if (!value->GetString(kCrosUsageDataPlanEndTimeProperty,
+                        &end_time_iso8601)) {
+    LOG(WARNING) << "FromDictionaryValue: no end time property";
+    return NULL;
+  }
+  DLOG(INFO) << "FromDictionaryValue: end time = " << end_time_iso8601;
+  base::Time end_time;
+  if (!TimeFromISO8601UTC(end_time_iso8601, &end_time)) {
+    LOG(WARNING) << "FromDictionaryValue: could not convert end time";
+    return NULL;
+  }
+
+  if (start_time > end_time) {
+    LOG(WARNING) << "FromDictionaryValue: start time > end time";
+    return NULL;
+  }
+
+  return new(std::nothrow) DataPlan(plan_name, plan_type, last_update,
+                                    start_time, end_time, max_bytes,
+                                    used_bytes);
+}
+
+// static
+bool DataPlan::TimeFromISO8601UTC(const std::string& time_8601_utc,
+                                  base::Time *time_out) {
+  DCHECK(time_out != NULL);
+  static const char *kISO8601UTCTimeFormat = "%Y-%m-%dT%H:%M:%SZ";
+  struct tm tm;
+  if (strptime(time_8601_utc.c_str(), kISO8601UTCTimeFormat, &tm) == NULL) {
+    DLOG(WARNING) << "TimeFromISO8601UTC: strptime failed for time string: "
+        << time_8601_utc;
+    return false;
+  }
+  time_t tt;
+  // NOTE: timegm interprets its input as being in UTC.
+  if ((tt = timegm(&tm)) == -1) {
+    DLOG(WARNING) << "TimeFromISO8601UTC: timegm failed";
+    return false;
+  }
+  *time_out = base::Time::FromTimeT(tt);
+  return true;
+}
+
 // private methods
 
-const char* DataPlan::TypeToString(DataPlan::Type type) const {
+const char* DataPlan::TypeToLibcrosString(DataPlan::Type type) const {
   switch (type) {
     case kTypeUnlimited:
       return kCellularDataPlanTypeUnlimited;
@@ -97,6 +236,22 @@ const char* DataPlan::TypeToString(DataPlan::Type type) const {
     default:
       DCHECK(false);
   }
+}
+
+// static
+bool DataPlan::CrosUsageStringToType(const std::string& type_string,
+                                     DataPlan::Type *type_out) {
+  CHECK_NOTNULL(type_out);
+  if (type_string == kCrosUsageDataPlanTypeUnlimited) {
+    *type_out = kTypeUnlimited;
+  } else if (type_string == kCrosUsageDataPlanTypeMeteredFree) {
+    *type_out = kTypeMeteredFree;
+  } else if (type_string == kCrosUsageDataPlanTypeMeteredPaid) {
+    *type_out = kTypeMeteredPaid;
+  } else {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace cashew

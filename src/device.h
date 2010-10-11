@@ -14,12 +14,15 @@
 
 namespace cashew {
 
+class Service;
+
 // represents a cellular device and monitors Flimflam state for that device
 class Device : public org::chromium::flimflam::Device_proxy,
                public DBus::IntrospectableProxy,
                public DBus::ObjectProxy {
   public:
-    Device(DBus::Connection& connection, const DBus::Path& path);  // NOLINT
+    Device(Service * const parent, DBus::Connection& connection,  // NOLINT
+           const DBus::Path& path);
     virtual ~Device();
 
     // get D-Bus path for this device
@@ -41,7 +44,7 @@ class Device : public org::chromium::flimflam::Device_proxy,
     // NOTE: for now, should always be kTypeCellular
     virtual Type GetType() const;
 
-    static const char* kCarrierUnknown;
+    static const char *kCarrierUnknown;
 
     // get cellular carrier for this device
     // returns kCarrierUnknown if we don't know
@@ -52,6 +55,9 @@ class Device : public org::chromium::flimflam::Device_proxy,
                                  const DBus::Variant& new_value);
 
   private:
+    // back pointer to our parent Service
+    Service * const parent_;
+
     // D-Bus path for Flimflam device that we represent
     // this is our unique identifier
     const DBus::Path path_;

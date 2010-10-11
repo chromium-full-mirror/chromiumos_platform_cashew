@@ -29,10 +29,11 @@ static const char* kFlimflamDeviceTypeCellular = "cellular";
 // TODO(vlaviano): what does vendor look like?
 static const char* kFlimflamDeviceTypeVendor = "";
 
-Device::Device(DBus::Connection& connection,  // NOLINT
+Device::Device(Service * const parent, DBus::Connection& connection,  // NOLINT
                const DBus::Path& path)
     : DBus::ObjectProxy(connection, path, kFlimflamDeviceName),
-      path_(path), type_(kTypeUnknown), carrier_(kCarrierUnknown) {
+      parent_(CHECK_NOTNULL(parent)), path_(path), type_(kTypeUnknown),
+      carrier_(kCarrierUnknown) {
   // init our state with a GetProperties() call to our Flimflam service path
   // we'll update this state by monitoring PropertyChanged signals
   GetDeviceProperties();
@@ -95,12 +96,16 @@ Device::Type Device::TypeFromString(const std::string& type) const {
 
 void Device::OnCarrierUpdate(const std::string& carrier) {
   DLOG(INFO) << path_ << ": OnCarrierUpdate: carrier = " << carrier;
-  if (carrier_.compare(kCarrierUnknown) && carrier_.compare(carrier)) {
-    LOG(WARNING) << path_ << ": OnCarrierUpdate: carrier change from "
-        << carrier_ << " to " << carrier << "!";
+  // only propagate this to parent Service if there's been a change
+  // we expect to see only one such change (from "Unknown")
+  if (carrier_.compare(carrier)) {
+    if (carrier_.compare(kCarrierUnknown)) {
+      LOG(WARNING) << path_ << ": OnCarrierUpdate: carrier change from "
+          << carrier_ << " to " << carrier << "!";
+    }
+    carrier_ = carrier;
+    parent_->OnCarrierUpdate(carrier);
   }
-  // TODO(vlaviano): load backend module for this carrier if needed
-  carrier_ = carrier;
 }
 
 void Device::OnTypeUpdate(const std::string& type) {
@@ -152,7 +157,8 @@ void Device::GetDeviceProperties() {
     const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
     OnCarrierUpdate(value.reader().get_string());
   } else {
-    DLOG(WARNING) << path_ << ": GetDeviceProperties: no Carrier property";
+    DLOG(WARNING) << path_
+        << ": GetDeviceProperties: no Cellular.Carrier property";
   }
 }
 

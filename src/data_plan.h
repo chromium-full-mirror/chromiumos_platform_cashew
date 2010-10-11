@@ -11,6 +11,7 @@
 
 #include <base/basictypes.h>  // NOLINT
 #include <base/time.h>  // NOLINT
+#include <base/values.h>  // NOLINT
 #include <dbus-c++/dbus.h>  // NOLINT
 
 namespace cashew {
@@ -69,6 +70,15 @@ class DataPlan {
     // return a{sv} representation for D-Bus
     virtual DBusDataPlan ToDBusFormat() const;
 
+    // construct DataPlan from DictionaryValue
+    static DataPlan* FromDictionaryValue(const DictionaryValue *value);
+
+    // convert ISO8601 time value in UTC to base::Time
+    // returns true on success and false on failure
+    // |time_out| must not be NULL and is set on a successful return
+    static bool TimeFromISO8601UTC(const std::string& time_8601_utc,
+                                   base::Time *time_out);
+
   private:
     // human-readable plan name
     const std::string name_;
@@ -92,8 +102,14 @@ class DataPlan {
     // bytes consumed so far during plan period
     Bytes data_bytes_used_;
 
-    // convert plan type enum value to string
-    const char* TypeToString(Type) const;
+    // convert plan type enum value to string formatted for libcros
+    const char* TypeToLibcrosString(Type type) const;
+
+    // convert string formatted for Cros Usage API to plan type enum value
+    // returns true on success and false on failure
+    // |type_out| must not be NULL and is set on a successful return
+    static bool CrosUsageStringToType(const std::string& type_string,
+                                      Type *type_out);
 
     DISALLOW_COPY_AND_ASSIGN(DataPlan);
 };

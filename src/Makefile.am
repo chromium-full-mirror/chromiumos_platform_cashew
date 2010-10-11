@@ -9,8 +9,17 @@ cashewd_SOURCES = \
   cashew_server.cc \
   data_plan.h \
   data_plan.cc \
+  data_plan_provider.h \
+  data_plan_provider.cc \
+  default_policy.h \
+  default_policy.cc \
   device.h \
   device.cc \
+  http_fetcher.h \
+  libcurl_http_fetcher.h \
+  libcurl_http_fetcher.cc \
+  policy.h \
+  policy.cc \
   service.h \
   service.cc \
   service_manager.h \
@@ -38,7 +47,8 @@ BUILT_SOURCES = \
 
 CLEANFILES = $(BUILT_SOURCES)
 
-# manually defining info for libs with no pkg-config file
+# CFLAGS and LIBS info comes from PKG_CHECK_MODULES checks in configure.ac
+# We manually define info below for libs with no pkg-config file
 
 LIBBASE_CFLAGS =
 LIBBASE_LIBS = -lbase
@@ -48,12 +58,16 @@ GFLAGS_LIBS = -lgflags
 
 cashewd_CPPFLAGS = -Wall -Werror \
   $(LIBBASE_CFLAGS) \
+  @CURL_CFLAGS@ \
   @DBUS_CPP_CFLAGS@ \
   $(GFLAGS_CFLAGS) \
+  @GLIB_CFLAGS@ \
   @GLOG_CFLAGS@
 
 cashewd_LDADD = \
   $(LIBBASE_LIBS) \
+  @CURL_LIBS@ \
   @DBUS_CPP_LIBS@ \
   $(GFLAGS_LIBS) \
+  @GLIB_LIBS@ \
   @GLOG_LIBS@

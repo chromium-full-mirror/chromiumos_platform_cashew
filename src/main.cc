@@ -9,7 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <glib.h>
+
 #include <dbus-c++/dbus.h>
+#include <dbus-c++/glib-integration.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -32,16 +35,15 @@ int InstallSignalHandler(const Signal signal,
   return sigaction(signal, &action, NULL);
 }
 
-static DBus::BusDispatcher *dispatcher = NULL;
-
+static DBus::Glib::BusDispatcher *dispatcher = NULL;
+static GMainLoop *main_loop = NULL;
 static CashewServer *server = NULL;
-
 static ServiceManager *service_manager = NULL;
 
 static void OnSignal(int signal) {
   DLOG(INFO) << "received signal " << signal;
-  if (dispatcher) {
-    dispatcher->leave();
+  if (main_loop != NULL) {
+    g_main_loop_quit(main_loop);
   }
 }
 
@@ -78,9 +80,12 @@ static void CleanUpForExit() {
   delete service_manager;
   service_manager = NULL;
   DBus::default_dispatcher = NULL;
-  DBus::BusDispatcher *dispatcher_to_delete = dispatcher;
+  delete dispatcher;
   dispatcher = NULL;
-  delete dispatcher_to_delete;
+  if (main_loop != NULL) {
+    g_main_loop_unref(main_loop);
+    main_loop = NULL;
+  }
   // TODO(vlaviano): uncomment when we get a newer version of glog
   // google::ShutdownGoogleLogging();
 }
@@ -94,18 +99,23 @@ int main(int argc, char *argv[]) {
   google::InstallFailureSignalHandler();
   LOG(INFO) << PACKAGE_STRING;
 
+  DLOG(INFO) << "creating main loop";
+  cashew::main_loop = g_main_loop_new(NULL, false);
+  if (cashew::main_loop == NULL) {
+    LOG(ERROR) << "couldn't create main loop";
+    cashew::CleanUpForExit();
+    exit(EXIT_FAILURE);
+  }
+
   DLOG(INFO) << "creating dbus dispatcher";
-  cashew::dispatcher = new(std::nothrow) DBus::BusDispatcher();
+  cashew::dispatcher = new(std::nothrow) DBus::Glib::BusDispatcher();
   if (cashew::dispatcher == NULL) {
     LOG(ERROR) << "couldn't create dbus dispatcher";
     cashew::CleanUpForExit();
     exit(EXIT_FAILURE);
   }
   DBus::default_dispatcher = cashew::dispatcher;
-
-  // TODO(vlaviano): policies
-
-  // TODO(vlaviano): back-end carrier apis
+  cashew::dispatcher->attach(NULL);
 
   DLOG(INFO) << "creating service manager";
   DBus::Connection client_conn = DBus::Connection::SystemBus();
@@ -122,7 +132,7 @@ int main(int argc, char *argv[]) {
   DBus::Connection server_conn = DBus::Connection::SystemBus();
   server_conn.request_name(cashew::CashewServer::kServiceName);
   cashew::server = new(std::nothrow) cashew::CashewServer(server_conn,
-      *cashew::service_manager);
+      cashew::service_manager);
   if (cashew::server == NULL) {
     LOG(ERROR) << "couldn't create cashew server";
     cashew::CleanUpForExit();
@@ -136,7 +146,7 @@ int main(int argc, char *argv[]) {
   }
 
   DLOG(INFO) << "entering event loop";
-  cashew::dispatcher->enter();
+  g_main_loop_run(cashew::main_loop);
   DLOG(INFO) << "exited event loop";
   cashew::CleanUpForExit();
   exit(EXIT_SUCCESS);

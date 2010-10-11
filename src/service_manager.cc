@@ -6,6 +6,7 @@
 
 #include <glog/logging.h>
 
+#include "src/cashew_server.h"
 #include "src/service.h"
 
 namespace cashew {
@@ -23,7 +24,7 @@ static const char* kTypeCellular = "cellular";
 ServiceManager::ServiceManager(DBus::Connection& connection)  // NOLINT
     : DBus::ObjectProxy(connection, kFlimflamManagerPath,
                         kFlimflamManagerName),
-      connection_(connection) {
+      connection_(connection), cashew_server_(NULL) {
   // init our state with a GetProperties() call to Flimflam
   // we'll update this state by monitoring PropertyChanged signals
   GetFlimflamServices();
@@ -41,6 +42,11 @@ const Service* ServiceManager::GetService(const std::string& service_path)
   }
   DCHECK(it->second != NULL);
   return static_cast<const Service *>(it->second);
+}
+
+void ServiceManager::SetCashewServer(CashewServer *cashew_server) {
+  DLOG(INFO) << "SetCashewServer";
+  cashew_server_ = cashew_server;
 }
 
 // Flimflam Manager D-Bus Proxy methods
@@ -66,6 +72,17 @@ void ServiceManager::StateChanged(const std::string& new_state) {
   DLOG(INFO) << "StateChanged: new_state = " << new_state;
   // TODO(vlaviano): switch on state and call private onFlimflamOffline(),
   // onFlimflamOnline() hooks.  If we care.
+}
+
+// Service methods
+
+void ServiceManager::EmitDataPlansUpdate(const Service& service) {
+  DLOG(INFO) << "EmitDataPlansUpdate: service = " << service.GetPath();
+  if (cashew_server_ == NULL) {
+    DLOG(WARNING) << "EmitDataPlansUpdate: no Cashew server";
+    return;
+  }
+  cashew_server_->EmitDataPlansUpdate(service);
 }
 
 // Private methods
@@ -160,7 +177,7 @@ void ServiceManager::OnServicesUpdate(const ServicePathList& paths) {
 void ServiceManager::OnNewService(const DBus::Path& path) {
   DLOG(INFO) << "OnNewService: " << path;
   DCHECK(GetService(path) == NULL);
-  Service *service = new(std::nothrow) Service(connection_, path);
+  Service *service = new(std::nothrow) Service(this, connection_, path);
   if (service == NULL) {
     LOG(ERROR) << "OnNewService: couldn't create service for " << path;
     return;

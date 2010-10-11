@@ -15,9 +15,10 @@
 #include "src/cashew_server_glue.h"
 #include "src/data_plan.h"
 #include "src/service.h"
-#include "src/service_manager.h"
 
 namespace cashew {
+
+class ServiceManager;
 
 // Implements Cashew D-Bus API
 class CashewServer : public org::chromium::Cashew_adaptor,
@@ -25,7 +26,7 @@ class CashewServer : public org::chromium::Cashew_adaptor,
                      public DBus::ObjectAdaptor {
   public:
     CashewServer(DBus::Connection& connection,  // NOLINT
-                 const ServiceManager& service_manager);
+                 ServiceManager * const service_manager);
     virtual ~CashewServer();
 
     // Cashew D-Bus API methods
@@ -44,10 +45,15 @@ class CashewServer : public org::chromium::Cashew_adaptor,
     static const char* kServiceName;
     static const char* kServicePath;
 
-  private:
-    const ServiceManager& service_manager_;
+    // Service Manager methods
 
-    // Emit a DataPlansUpdate signal for a service
+    // Service Manager wants us to emit an update for a Service
+    virtual void EmitDataPlansUpdate(const Service& service);
+
+  private:
+    ServiceManager * const service_manager_;
+
+    // Emit a DataPlansUpdate D-Bus signal for a service
     void EmitDataPlansUpdateSignal(const Service& service);
 
     DISALLOW_COPY_AND_ASSIGN(CashewServer);

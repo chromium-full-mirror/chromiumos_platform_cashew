@@ -13,10 +13,11 @@
 #include <dbus-c++/dbus.h>  // NOLINT
 
 #include "src/flimflam_manager_client_glue.h"
+#include "src/service.h"
 
 namespace cashew {
 
-class Service;
+class CashewServer;
 
 // map of service path names to Service objects
 typedef std::map<std::string, Service*> ServiceMap;
@@ -36,6 +37,13 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
     // returns NULL if service is not found
     virtual const Service* GetService(const std::string& service_path) const;
 
+    // set Cashew server
+    // we'll talk to it when we want to emit updates to the world on behalf of
+    // our child Services.
+    // it's ok to clear this by setting it to NULL, in which case our updates
+    // will go into a black hole.
+    virtual void SetCashewServer(CashewServer *cashew_server);
+
     // Flimflam Manager D-Bus Proxy methods
 
     // receive incoming PropertyChanged D-Bus signal from Flimflam
@@ -45,6 +53,11 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
     // receive incoming StateChanged D-Bus signal from Flimflam
     virtual void StateChanged(const std::string& new_state);
 
+    // Service methods
+
+    // a child Service wants us to emit an update about its data plans
+    virtual void EmitDataPlansUpdate(const Service& service);
+
   private:
     // D-Bus connection owned by our creator
     // shared with Service objs that we create
@@ -52,6 +65,9 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
 
     // collection of Service objs representing cellular services
     ServiceMap services_;
+
+    // Cashew server implementing our front-end interface
+    CashewServer *cashew_server_;
 
     // delete a collection of services
     void DeleteServices(ServiceMap *service_map);

@@ -6,6 +6,8 @@
 
 #include <glog/logging.h>
 
+#include "src/service_manager.h"
+
 namespace cashew {
 
 const char* CashewServer::kServiceName = "org.chromium.Cashew";
@@ -16,12 +18,14 @@ const char* kCashewErrorServiceUnknown =
     "org.chromium.Cashew.Error.ServiceUnknown";
 
 CashewServer::CashewServer(DBus::Connection& connection,  // NOLINT
-                           const ServiceManager& service_manager)
+                           ServiceManager * const service_manager)
     : DBus::ObjectAdaptor(connection, kServicePath),
-      service_manager_(service_manager) {
+      service_manager_(CHECK_NOTNULL(service_manager)) {
+  service_manager_->SetCashewServer(this);
 }
 
 CashewServer::~CashewServer() {
+  service_manager_->SetCashewServer(NULL);
 }
 
 // Cashew D-Bus API methods
@@ -30,7 +34,7 @@ DBusDataPlanList CashewServer::GetDataPlans(const std::string& service_path,
                                             DBus::Error& error) {  // NOLINT
   DLOG(INFO) << "GetDataPlans: service = " << service_path;
   DBusDataPlanList dbus_data_plans;
-  const Service *service = service_manager_.GetService(service_path);
+  const Service *service = service_manager_->GetService(service_path);
   if (service == NULL) {
     DLOG(WARNING) << "GetDataPlans: unknown service: " << service_path;
     error.set(kCashewErrorServiceUnknown, service_path.c_str());
@@ -44,7 +48,7 @@ DBusDataPlanList CashewServer::GetDataPlans(const std::string& service_path,
 void CashewServer::RequestDataPlansUpdate(const std::string& service_path,
                                           DBus::Error& error) {  // NOLINT
   DLOG(INFO) <<  "RequestDataPlansUpdate: service = " << service_path;
-  const Service *service = service_manager_.GetService(service_path);
+  const Service *service = service_manager_->GetService(service_path);
   if (service == NULL) {
     DLOG(WARNING) << "RequestDataPlansUpdate: unknown service: "
         << service_path;
@@ -62,6 +66,12 @@ void CashewServer::RequestDataPlansUpdate(const std::string& service_path,
 bool CashewServer::IsAlive(DBus::Error& error) {  // NOLINT
   DLOG(INFO) << "IsAlive";
   return true;
+}
+
+// Service Manager methods
+
+void CashewServer::EmitDataPlansUpdate(const Service& service) {
+  EmitDataPlansUpdateSignal(service);
 }
 
 // Private methods
