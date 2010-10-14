@@ -496,11 +496,12 @@ void Service::RequestUsageUpdate() {
   // allows this request (e.g., if we can only make API requests over the
   // cellular service itself, is this service the default route?)
 
+  request_in_progress_ = true;
   if (!provider_->RequestUsageUpdate()) {
     DLOG(WARNING) << path_ << ": RequestUsageUpdate: request failed";
+    request_in_progress_ = false;
   } else {
     DLOG(INFO) << path_ << ": RequestUsageUpdate: request succeeded";
-    request_in_progress_ = true;
   }
 }
 
