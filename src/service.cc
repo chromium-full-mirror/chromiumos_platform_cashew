@@ -53,6 +53,11 @@ static const int kCrosUsageVersionMaxSupported = 1;
 // Chromium OS Usage API status values
 static const char *kCrosUsageStatusOk = "OK";
 static const char *kCrosUsageStatusError = "ERROR";
+static const char *kCrosUsageStatusMalformedRequest = "MALFORMED REQUEST";
+static const char *kCrosUsageStatusInternalError = "INTERNAL ERROR";
+static const char *kCrosUsageStatusServiceUnavailable = "SERVICE UNAVAILABLE";
+static const char *kCrosUsageStatusRequestRefused = "REQUEST REFUSED";
+static const char *kCrosUsageStatusUnknownDevice = "UNKNOWN DEVICE";
 
 Service::Service(ServiceManager * const parent,
                  DBus::Connection& connection,  // NOLINT
@@ -217,12 +222,13 @@ void Service::OnRequestComplete(const DataPlanProvider *provider,
     return;
   }
   DLOG(INFO) << path_ << ": OnRequestComplete: status = " << status;
-  if (status != kCrosUsageStatusOk && status != kCrosUsageStatusError) {
+  if (!IsValidCrosUsageStatus(status)) {
     LOG(WARNING) << path_ << ": OnRequestComplete: invalid status: " << status;
     return;
   }
-  if (status == kCrosUsageStatusError) {
+  if (status != kCrosUsageStatusOk) {
     LOG(WARNING) << path_ << ": OnRequestComplete: status: " << status;
+    OnCrosUsageErrorResult(status);
     return;
   }
 
@@ -567,6 +573,26 @@ void Service::DeleteCarrierState() {
     delete provider_;
     provider_ = NULL;
   }
+}
+
+bool Service::IsValidCrosUsageStatus(const std::string& status) const {
+  if (status == kCrosUsageStatusOk ||
+      status == kCrosUsageStatusError ||
+      status == kCrosUsageStatusMalformedRequest ||
+      status == kCrosUsageStatusInternalError ||
+      status == kCrosUsageStatusServiceUnavailable ||
+      status == kCrosUsageStatusRequestRefused ||
+      status == kCrosUsageStatusUnknownDevice) {
+    return true;
+  }
+  return false;
+}
+
+void Service::OnCrosUsageErrorResult(const std::string& status) {
+  DLOG(WARNING) << path_ << ": OnCrosUsageErrorResult: " << status;
+  // TODO(vlaviano): take action based on which specific error status string
+  // we've received (e.g., we could adjust the update timer interval, or
+  // disable the timer entirely).
 }
 
 }  // namespace cashew

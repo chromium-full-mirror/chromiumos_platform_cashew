@@ -190,6 +190,12 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // NOTE: this does not delete usage url (it's considered service state)
     void DeleteCarrierState();
 
+    // does |status| contain a valid usage API status result string?
+    bool IsValidCrosUsageStatus(const std::string& status) const;
+
+    // usage API request returned an error result
+    void OnCrosUsageErrorResult(const std::string& status);
+
     DISALLOW_COPY_AND_ASSIGN(Service);
 };
 
