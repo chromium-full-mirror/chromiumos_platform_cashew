@@ -34,7 +34,7 @@ const std::string& DataPlanProvider::GetUsageUrl() const {
 
 void DataPlanProvider::SetUsageUrl(const std::string& usage_url) {
   DLOG(INFO) << carrier_ << ": SetUsageUrl: url = " << usage_url;
-  if (usage_url_.compare(usage_url)) {
+  if (usage_url_ != usage_url) {
     usage_url_ = usage_url;
     CancelPendingRequests();
   }

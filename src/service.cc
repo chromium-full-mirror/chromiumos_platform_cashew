@@ -51,6 +51,7 @@ static const int kCrosUsageVersionMinSupported = 1;
 static const int kCrosUsageVersionMaxSupported = 1;
 
 // Chromium OS Usage API status values
+// NOTE: add new values to IsValidCrosUsageStatus below also
 static const char *kCrosUsageStatusOk = "OK";
 static const char *kCrosUsageStatusError = "ERROR";
 static const char *kCrosUsageStatusMalformedRequest = "MALFORMED REQUEST";
@@ -66,7 +67,8 @@ Service::Service(ServiceManager * const parent,
       parent_(CHECK_NOTNULL(parent)), connection_(connection), path_(path),
       state_(kStateUnknown), type_(kTypeUnknown), device_(NULL),
       provider_(NULL), request_in_progress_(false),
-      update_timeout_source_(NULL), policy_(NULL) {
+      update_timeout_source_(NULL), policy_(NULL),
+      is_default_service_(false) {
   // init our state with a GetProperties() call to our Flimflam service path
   // we'll update this state by monitoring PropertyChanged signals
   GetServiceProperties();
@@ -94,6 +96,26 @@ Service::Type Service::GetType() const {
   return type_;
 }
 
+// static
+Service::Type Service::TypeFromString(const std::string& type) {
+  if (type == kFlimflamServiceTypeEthernet) {
+    return kTypeEthernet;
+  }
+  if (type == kFlimflamServiceTypeWifi) {
+    return kTypeWifi;
+  }
+  if (type == kFlimflamServiceTypeWimax) {
+    return kTypeWimax;
+  }
+  if (type == kFlimflamServiceTypeBluetooth) {
+    return kTypeBluetooth;
+  }
+  if (type == kFlimflamServiceTypeCellular) {
+    return kTypeCellular;
+  }
+  return kTypeUnknown;
+}
+
 Device* Service::GetDevice() const {
   return device_;
 }
@@ -109,18 +131,30 @@ DBusDataPlanList Service::GetDBusDataPlans() const {
   return dbus_data_plans;
 }
 
+bool Service::IsDefaultService() const {
+  if (is_default_service_) {
+    // cross-check with parent's idea of default technology
+    if (parent_->GetDefaultTechnology() != kTypeCellular) {
+      DLOG(WARNING) << path_ << ": IsDefaultService: "
+          << "service manager doesn't think default technology is cellular";
+    }
+    return true;
+  }
+  return false;
+}
+
 // Flimflam Service D-Bus Proxy methods
 
 void Service::PropertyChanged(const std::string& property_name,
                               const DBus::Variant& new_value) {
   DLOG(INFO) << path_ << ": PropertyChanged: property_name = " << property_name;
-  if (property_name.compare(kFlimflamServiceDeviceProperty) == 0) {
+  if (property_name == kFlimflamServiceDeviceProperty) {
     OnDeviceUpdate(new_value.reader().get_path());
-  } else if (property_name.compare(kFlimflamServiceStateProperty) == 0) {
+  } else if (property_name == kFlimflamServiceStateProperty) {
     OnStateUpdate(new_value.reader().get_string());
-  } else if (property_name.compare(kFlimflamServiceTypeProperty) == 0) {
+  } else if (property_name == kFlimflamServiceTypeProperty) {
     OnTypeUpdate(new_value.reader().get_string());
-  } else if (property_name.compare(kFlimflamServiceUsageUrlProperty) == 0) {
+  } else if (property_name == kFlimflamServiceUsageUrlProperty) {
     OnUsageUrlUpdate(new_value.reader().get_string());
   } else {
     // we don't care about this property
@@ -132,16 +166,16 @@ void Service::PropertyChanged(const std::string& property_name,
 void Service::OnCarrierUpdate(const std::string& carrier) {
   DLOG(INFO) << path_ << ": OnCarrierUpdate: carrier = " << carrier;
   // NOTE: device_ can be NULL here because we may still be in Device ctor
-  DCHECK(device_ == NULL || carrier.compare(device_->GetCarrier()) == 0);
+  DCHECK(device_ == NULL || carrier == device_->GetCarrier());
 
   // get rid of state associated with old carrier
   if (provider_ != NULL) {
-    DCHECK(carrier.compare(provider_->GetCarrier()));
+    DCHECK(carrier != provider_->GetCarrier());
   }
   DeleteCarrierState();
 
   // if we don't have new carrier info, we can't do anything now
-  if (carrier.compare(Device::kCarrierUnknown) == 0) {
+  if (carrier == Device::kCarrierUnknown) {
     return;
   }
 
@@ -166,8 +200,7 @@ void Service::OnCarrierUpdate(const std::string& carrier) {
   // if we already have usage url, set new provider in motion
   if (!usage_url_.empty()) {
     provider_->SetUsageUrl(usage_url_);
-    RequestUsageUpdate();
-    CreateUpdateTimer();
+    ReconsiderSendingUsageRequests();
   } else {
     // we'll do this later in OnUsageUrlUpdate
   }
@@ -287,53 +320,62 @@ void Service::OnRequestComplete(const DataPlanProvider *provider,
   DeleteDataPlans(&old_plans);
 }
 
+// Service Manager methods
+
+void Service::OnDefaultServiceUpdate(bool is_default_service) {
+  DCHECK(is_default_service_ == !is_default_service);
+  DLOG(INFO) << path_ << ": OnDefaultServiceUpdate: is_default_service = "
+      << is_default_service;
+  is_default_service_ = is_default_service;
+  if (is_default_service_) {
+    // we just became the default service
+    // cross-check with parent's idea of default technology
+    if (parent_->GetDefaultTechnology() != kTypeCellular) {
+      DLOG(WARNING) << path_ << ": OnDefaultServiceUpdate: "
+          << "service manager doesn't think default technology is cellular";
+    }
+  }
+  ReconsiderSendingUsageRequests();
+}
+
+void Service::OnFlimflamOnline() {
+  DLOG(INFO) << path_ << ": OnFlimflamOnline";
+  ReconsiderSendingUsageRequests();
+}
+
+void Service::OnFlimflamOffline() {
+  DLOG(INFO) << path_ << ": OnFlimflamOffline";
+  ReconsiderSendingUsageRequests();
+}
+
 // Private methods
 
 Service::State Service::StateFromString(const std::string& state) const {
-  if (state.compare(kFlimflamServiceStateIdle) == 0) {
+  if (state == kFlimflamServiceStateIdle) {
     return kStateIdle;
   }
-  if (state.compare(kFlimflamServiceStateCarrier) == 0) {
+  if (state == kFlimflamServiceStateCarrier) {
     return kStateCarrier;
   }
-  if (state.compare(kFlimflamServiceStateAssociation) == 0) {
+  if (state == kFlimflamServiceStateAssociation) {
     return kStateAssociation;
   }
-  if (state.compare(kFlimflamServiceStateConfiguration) == 0) {
+  if (state == kFlimflamServiceStateConfiguration) {
     return kStateConfiguration;
   }
-  if (state.compare(kFlimflamServiceStateReady) == 0) {
+  if (state == kFlimflamServiceStateReady) {
     return kStateReady;
   }
-  if (state.compare(kFlimflamServiceStateDisconnect) == 0) {
+  if (state == kFlimflamServiceStateDisconnect) {
     return kStateDisconnect;
   }
-  if (state.compare(kFlimflamServiceStateFailure) == 0) {
+  if (state == kFlimflamServiceStateFailure) {
     return kStateFailure;
   }
-  if (state.compare(kFlimflamServiceStateActivationFailure) == 0) {
+  if (state == kFlimflamServiceStateActivationFailure) {
     return kStateActivationFailure;
   }
   return kStateUnknown;
-}
-
-Service::Type Service::TypeFromString(const std::string& type) const {
-  if (type.compare(kFlimflamServiceTypeEthernet) == 0) {
-    return kTypeEthernet;
-  }
-  if (type.compare(kFlimflamServiceTypeWifi) == 0) {
-    return kTypeWifi;
-  }
-  if (type.compare(kFlimflamServiceTypeWimax) == 0) {
-    return kTypeWimax;
-  }
-  if (type.compare(kFlimflamServiceTypeBluetooth) == 0) {
-    return kTypeBluetooth;
-  }
-  if (type.compare(kFlimflamServiceTypeCellular) == 0) {
-    return kTypeCellular;
-  }
-  return kTypeUnknown;
 }
 
 void Service::OnDeviceUpdate(const DBus::Path& device_path) {
@@ -341,7 +383,7 @@ void Service::OnDeviceUpdate(const DBus::Path& device_path) {
 
   // if there's an existing device with a non-matching path: destroy it and
   // fall through to make a new one below.
-  if (device_ != NULL && device_->GetPath().compare(device_path)) {
+  if (device_ != NULL && device_->GetPath() != device_path) {
     LOG(WARNING) << path_ << ": OnDeviceUpdate: device path changed from "
         << device_->GetPath() << " to " << device_path;
     delete device_;
@@ -366,9 +408,13 @@ void Service::OnDeviceUpdate(const DBus::Path& device_path) {
 
 void Service::OnStateUpdate(const std::string& state) {
   DLOG(INFO) << path_ << ": OnStateUpdate: state = " << state;
+  Service::State old_state = state_;
   state_ = StateFromString(state);
-  // TODO(vlaviano): react to state changes
-  // note that ready does not necessarily mean that we're the default route
+  if (old_state != kStateReady && IsConnected()) {
+    OnConnected();
+  } else if (old_state == kStateReady && !IsConnected()) {
+    OnDisconnected();
+  }
 }
 
 void Service::OnTypeUpdate(const std::string& type) {
@@ -381,17 +427,15 @@ void Service::OnTypeUpdate(const std::string& type) {
 
 void Service::OnUsageUrlUpdate(const std::string& usage_url) {
   DLOG(INFO) << path_ << ": OnUsageUrlUpdate: url = " << usage_url;
-  if (usage_url.compare(usage_url_) == 0) {
+  if (usage_url == usage_url_) {
     return;
   }
   usage_url_ = usage_url;
   if (provider_ != NULL) {
-    DCHECK(usage_url.compare(provider_->GetUsageUrl()));
-    DestroyUpdateTimer();
-    CancelPendingRequests();
+    DCHECK(usage_url != provider_->GetUsageUrl());
+    StopSendingUsageRequests();
     provider_->SetUsageUrl(usage_url);
-    RequestUsageUpdate();
-    CreateUpdateTimer();
+    ReconsiderSendingUsageRequests();
   }
 }
 
@@ -416,7 +460,8 @@ void Service::GetServiceProperties() {
     // TODO(vlaviano): schedule another attempt later
     return;
   }
-  DLOG(INFO) << "Received " << properties.size() << " properties";
+  DLOG(INFO) << path_ << ": GetServiceProperties: Received "
+      << properties.size() << " properties";
 
   // grab the properties in which we're interested
   PropertyMap::const_iterator it;
@@ -489,19 +534,12 @@ void Service::AddHardcodedDataPlan() {
 }
 
 void Service::RequestUsageUpdate() {
-  DCHECK(provider_ != NULL);
-  DCHECK(!usage_url_.empty());
-  DCHECK(device_ == NULL ||
-         device_->GetCarrier().compare(Device::kCarrierUnknown));
-
+  DCHECK(ShouldSendUsageRequests());
   if (request_in_progress_) {
+    DLOG(WARNING) << path_
+        << ": RequestUsageUpdate: request already in progress";
     return;
   }
-
-  // TODO(vlaviano): apply policy to determine if current connectivity state
-  // allows this request (e.g., if we can only make API requests over the
-  // cellular service itself, is this service the default route?)
-
   request_in_progress_ = true;
   if (!provider_->RequestUsageUpdate()) {
     DLOG(WARNING) << path_ << ": RequestUsageUpdate: request failed";
@@ -566,8 +604,7 @@ void Service::DeleteCarrierState() {
     delete policy_;
     policy_ = NULL;
   }
-  DestroyUpdateTimer();
-  CancelPendingRequests();
+  StopSendingUsageRequests();
   if (provider_ != NULL) {
     DLOG(INFO) << path_ << ": DeleteCarrierState: deleting data plan provider";
     delete provider_;
@@ -590,9 +627,96 @@ bool Service::IsValidCrosUsageStatus(const std::string& status) const {
 
 void Service::OnCrosUsageErrorResult(const std::string& status) {
   DLOG(WARNING) << path_ << ": OnCrosUsageErrorResult: " << status;
-  // TODO(vlaviano): take action based on which specific error status string
-  // we've received (e.g., we could adjust the update timer interval, or
-  // disable the timer entirely).
+  // TODO(vlaviano): hook for future use
+}
+
+bool Service::IsConnected() const {
+  if (state_ != kStateReady) {
+    return false;
+  }
+  // cross-check with parent Service Manager's idea of Flimflam global
+  // connectivity state
+  if (ServiceManager::IsOfflineConnectivityState(
+      parent_->GetConnectivityState())) {
+    DLOG(WARNING) << path_
+        << ": IsConnected: service manager thinks we're offline";
+    return false;
+  }
+  return true;
+}
+
+void Service::OnConnected() {
+  DLOG(INFO) << path_ << ": OnConnected";
+  DCHECK(IsConnected());
+  ReconsiderSendingUsageRequests();
+}
+
+void Service::OnDisconnected() {
+  DLOG(INFO) << path_ << ": OnDisconnected";
+  DCHECK(!IsConnected());
+  ReconsiderSendingUsageRequests();
+}
+
+bool Service::IsSendingUsageRequests() const {
+  return request_in_progress_ || update_timeout_source_ != NULL;
+}
+
+// NOTE: we centralize our decisionmaking here to avoid insanity and just call
+// ReconsiderSendingUsageRequests when anything changes
+bool Service::ShouldSendUsageRequests() const {
+  if (provider_ == NULL) {
+    DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: no provider";
+    DCHECK(policy_ == NULL);
+    return false;
+  }
+  DCHECK(device_ == NULL || device_->GetCarrier() != Device::kCarrierUnknown);
+  DCHECK(policy_ != NULL);
+  if (usage_url_.empty()) {
+    DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: no usage url";
+    return false;
+  }
+  if (ServiceManager::IsOfflineConnectivityState(
+      parent_->GetConnectivityState())) {
+    DLOG(INFO) << path_
+        << ": ShouldSendUsageRequests: no: flimflam is offline";
+    return false;
+  }
+  if (policy_->UsageRequestsMustBeSentOTA()) {
+    if (!IsConnected()) {
+      DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: "
+          << "ota-only policy and not connected";
+      return false;
+    }
+    if (!IsDefaultService()) {
+      DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: "
+          << "ota-only policy and not default service";
+      return false;
+    }
+  }
+  DLOG(INFO) << path_ << ": ShouldSendUsageRequests: yes";
+  return true;
+}
+
+void Service::StopSendingUsageRequests() {
+  DLOG(INFO) << path_ << ": StopSendingUsageRequests";
+  DestroyUpdateTimer();
+  CancelPendingRequests();
+}
+
+void Service::StartSendingUsageRequests() {
+  DLOG(INFO) << path_ << ": StartSendingUsageRequests";
+  DCHECK(!IsSendingUsageRequests());
+  RequestUsageUpdate();
+  CreateUpdateTimer();
+}
+
+void Service::ReconsiderSendingUsageRequests() {
+  DLOG(INFO) << path_ << ": ReconsiderSendingUsageRequests";
+  if (!IsSendingUsageRequests() && ShouldSendUsageRequests()) {
+    StartSendingUsageRequests();
+  } else if (IsSendingUsageRequests() && !ShouldSendUsageRequests()) {
+    StopSendingUsageRequests();
+  }
 }
 
 }  // namespace cashew

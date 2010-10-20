@@ -31,6 +31,10 @@ bool DefaultPolicy::ShouldEmitDataPlansUpdate(const DataPlanList& old_plans,
   return true;
 }
 
+bool DefaultPolicy::UsageRequestsMustBeSentOTA() const {
+  return true;
+}
+
 // private methods
 
 }  // namespace cashew

@@ -12,25 +12,36 @@
 namespace cashew {
 
 // Flimflam D-Bus indentifiers
-static const char* kFlimflamManagerName = "org.chromium.flimflam";
-static const char* kFlimflamManagerPath = "/";
+static const char *kFlimflamManagerName = "org.chromium.flimflam";
+static const char *kFlimflamManagerPath = "/";
 
 // Flimflam property names
-static const char* kServicesProperty = "Services";
+static const char *kDefaultTechnologyProperty = "DefaultTechnology";
+static const char *kServicesProperty = "Services";
+static const char *kStateProperty = "State";
+
+// Flimflam on-the-wire State values
+static const char *kFlimflamStateOffline = "offline";
+static const char *kFlimflamStateConnected = "connected";
+static const char *kFlimflamStateOnline = "online";
 
 // Flimflam service types
-static const char* kTypeCellular = "cellular";
+static const char *kTypeCellular = "cellular";
 
 ServiceManager::ServiceManager(DBus::Connection& connection)  // NOLINT
     : DBus::ObjectProxy(connection, kFlimflamManagerPath,
                         kFlimflamManagerName),
-      connection_(connection), cashew_server_(NULL) {
+      connection_(connection), cashew_server_(NULL),
+      default_technology_(Service::kTypeUnknown),
+      default_cellular_service_(NULL),
+      connectivity_state_(kConnectivityStateUnknown) {
   // init our state with a GetProperties() call to Flimflam
   // we'll update this state by monitoring PropertyChanged signals
-  GetFlimflamServices();
+  GetFlimflamProperties();
 }
 
 ServiceManager::~ServiceManager() {
+  ClearDefaultCellularService();
   DeleteServices(&services_);
 }
 
@@ -49,29 +60,69 @@ void ServiceManager::SetCashewServer(CashewServer *cashew_server) {
   cashew_server_ = cashew_server;
 }
 
+Service::Type ServiceManager::GetDefaultTechnology() const {
+  return default_technology_;
+}
+
+ServiceManager::ConnectivityState ServiceManager::GetConnectivityState()
+    const {
+  return connectivity_state_;
+}
+
+// static
+bool ServiceManager::IsOfflineConnectivityState(
+    ServiceManager::ConnectivityState state) {
+  if (state == kConnectivityStateUnknown ||
+      state == kConnectivityStateOffline) {
+    return true;
+  }
+  return false;
+}
+
+// static
+bool ServiceManager::IsOnlineConnectivityState(
+    ServiceManager::ConnectivityState state) {
+  if (state == kConnectivityStateConnected ||
+      state == kConnectivityStateOnline) {
+    return true;
+  }
+  return false;
+}
+
 // Flimflam Manager D-Bus Proxy methods
 
 void ServiceManager::PropertyChanged(const std::string& property_name,
                                      const DBus::Variant& new_value) {
   DLOG(INFO) << "PropertyChanged: property_name = " << property_name;
-
-  // we only care about Services changes
-  if (property_name.compare(kServicesProperty)) {
-      return;
+  if (property_name == kDefaultTechnologyProperty) {
+    OnDefaultTechnologyUpdate(new_value.reader().get_string());
+  } else if (property_name == kServicesProperty) {
+    // interpret new_value as a vector of service paths
+    ServicePathList paths;
+    DBus::MessageIter reader = new_value.reader();
+    reader >> paths;
+    OnServicesUpdate(paths);
+  } else if (property_name == kStateProperty) {
+    // this has its own signal, StateChanged, but just in case...
+    StateChanged(new_value.reader().get_string());
+  } else {
+    // we don't care about this property
   }
-
-  // interpret new_value as a vector of service paths
-  ServicePathList paths;
-  DBus::MessageIter reader = new_value.reader();
-  reader >> paths;
-
-  OnServicesUpdate(paths);
 }
 
-void ServiceManager::StateChanged(const std::string& new_state) {
-  DLOG(INFO) << "StateChanged: new_state = " << new_state;
-  // TODO(vlaviano): switch on state and call private onFlimflamOffline(),
-  // onFlimflamOnline() hooks.  If we care.
+void ServiceManager::StateChanged(const std::string& new_state_string) {
+  DLOG(INFO) << "StateChanged: new_state = " << new_state_string;
+  ConnectivityState old_state = connectivity_state_;
+  connectivity_state_ = ConnectivityStateFromString(new_state_string);
+  // see if we're coming online or going offline
+  // NOTE: we consider "unknown" to be offline
+  if (IsOfflineConnectivityState(old_state) &&
+      IsOnlineConnectivityState(connectivity_state_)) {
+    OnFlimflamOnline();
+  } else if (IsOnlineConnectivityState(old_state) &&
+      IsOfflineConnectivityState(connectivity_state_)) {
+    OnFlimflamOffline();
+  }
 }
 
 // Service methods
@@ -99,8 +150,8 @@ void ServiceManager::DeleteServices(ServiceMap *service_map) {
   }
 }
 
-void ServiceManager::GetFlimflamServices() {
-  DLOG(INFO) << "GetFlimflamServices";
+void ServiceManager::GetFlimflamProperties() {
+  DLOG(INFO) << "GetFlimflamProperties";
   PropertyMap properties;
   // dbus-c++ throws exceptions
   // invoke the "Existing Non-conformant Code" clause of the style guide and
@@ -109,30 +160,62 @@ void ServiceManager::GetFlimflamServices() {
     // TODO(vlaviano): make this call asynchronous
     properties = GetProperties();
   } catch (DBus::Error& error) {  // NOLINT
-    LOG(WARNING) << "GetFlimflamServices: GetProperties() -> Exception: "
+    LOG(WARNING) << "GetFlimflamProperties: GetProperties() -> Exception: "
         << error.name() << ": " << error.message();
     // TODO(vlaviano): schedule another attempt later
     return;
   } catch (...) {  // NOLINT
-    LOG(WARNING) << "GetFlimflamServices: GetProperties() -> Exception";
+    LOG(WARNING) << "GetFlimflamProperties: GetProperties() -> Exception";
     // TODO(vlaviano): schedule another attempt later
     return;
   }
+  DLOG(INFO) << "GetFlimflamProperties: Received " << properties.size()
+      << " properties";
 
-  // grab Services property from result
-  PropertyMap::const_iterator it = properties.find(kServicesProperty);
-  if (it == properties.end()) {
-    DLOG(WARNING) << "GetFlimflamServices: no Services property";
-    return;
+  // grab the properties in which we're interested
+  PropertyMap::const_iterator it = properties.find(kDefaultTechnologyProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    OnDefaultTechnologyUpdate(value.reader().get_string());
+  } else {
+    DLOG(WARNING) << "GetFlimflamProperties: no DefaultTechnology property";
   }
-  DBus::Variant value = static_cast<DBus::Variant>(it->second);
+  it = properties.find(kServicesProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    // interpret value as vector of service paths
+    ServicePathList paths;
+    DBus::MessageIter reader = value.reader();
+    reader >> paths;
+    OnServicesUpdate(paths);
+  } else {
+    DLOG(WARNING) << "GetFlimflamProperties: no Services property";
+  }
+  it = properties.find(kStateProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    StateChanged(value.reader().get_string());
+  } else {
+    DLOG(WARNING) << "GetFlimflamProperties: no State property";
+  }
+}
 
-  // interpret value as vector of service paths
-  ServicePathList paths;
-  DBus::MessageIter reader = value.reader();
-  reader >> paths;
-
-  OnServicesUpdate(paths);
+void ServiceManager::OnDefaultTechnologyUpdate(
+    const std::string& default_technology) {
+  DLOG(INFO) << "OnDefaultTechnologyUpdate: default technology = "
+      << default_technology;
+  default_technology_ = Service::TypeFromString(default_technology);
+  if (default_technology_ == Service::kTypeUnknown) {
+    LOG(WARNING) << "OnDefaultTechnologyUpdate: unknown default technology: "
+        << default_technology;
+  }
+  if (default_technology_ != Service::kTypeCellular &&
+      default_cellular_service_ != NULL) {
+    // if the default technology isn't cellular and yet we think that one of
+    // our cellular services is the default service, then we need to update
+    // our view of the world.
+    ClearDefaultCellularService();
+  }
 }
 
 void ServiceManager::OnServicesUpdate(const ServicePathList& paths) {
@@ -172,6 +255,16 @@ void ServiceManager::OnServicesUpdate(const ServicePathList& paths) {
 
   // services left in old_services failed to appear in the update: delete them
   DeleteServices(&old_services);
+
+  // Flimflam always places the default service first in its list of services,
+  // so we'll take a look at the first element in the paths list and see if the
+  // default service has changed. Note that |paths| can be empty. We still want
+  // to know about this, since it means that there is no default service.
+  const DBus::Path *default_service_path = NULL;
+  if (!paths.empty()) {
+    default_service_path = &*paths.begin();
+  }
+  OnDefaultServiceUpdate(default_service_path);
 }
 
 void ServiceManager::OnNewService(const DBus::Path& path) {
@@ -183,6 +276,85 @@ void ServiceManager::OnNewService(const DBus::Path& path) {
     return;
   }
   services_[path] = service;
+}
+
+void ServiceManager::OnDefaultServiceUpdate(const DBus::Path *path) {
+  DLOG(INFO) << "OnDefaultServiceUpdate: new default service = "
+      << ((path == NULL) ? "None" : *path);
+  // check if new default service path (if any) corresponds to one of our
+  // cellular services
+  Service *new_default_cellular_service = NULL;
+  if (path != NULL) {
+    new_default_cellular_service = const_cast<Service*>(GetService(*path));
+  }
+  if (new_default_cellular_service != NULL) {
+    SetDefaultCellularService(new_default_cellular_service);
+  } else {
+    ClearDefaultCellularService();
+  }
+}
+
+void ServiceManager::ClearDefaultCellularService() {
+  DLOG(INFO) << "ClearDefaultCellularService";
+  if (default_cellular_service_ != NULL) {
+    DCHECK(default_cellular_service_->IsDefaultService());
+    default_cellular_service_->OnDefaultServiceUpdate(false);
+    default_cellular_service_ = NULL;
+  }
+}
+
+void ServiceManager::SetDefaultCellularService(Service *service) {
+  DLOG(INFO) << "SetDefaultCellularService: "
+      << ((service == NULL) ? "None" : service->GetPath());
+  if (default_cellular_service_ == service) {
+    return;
+  }
+  if (default_cellular_service_ != NULL) {
+    ClearDefaultCellularService();
+  }
+  DCHECK(default_cellular_service_ == NULL);
+  if (service != NULL) {
+    DCHECK(!service->IsDefaultService());
+    service->OnDefaultServiceUpdate(true);
+    default_cellular_service_ = service;
+  }
+}
+
+// static
+ServiceManager::ConnectivityState ServiceManager::ConnectivityStateFromString(
+    const std::string& state) {
+  if (state == kFlimflamStateOffline) {
+    return kConnectivityStateOffline;
+  }
+  if (state == kFlimflamStateConnected) {
+    return kConnectivityStateConnected;
+  }
+  if (state == kFlimflamStateOnline) {
+    return kConnectivityStateOnline;
+  }
+  return kConnectivityStateUnknown;
+}
+
+void ServiceManager::OnFlimflamOnline() {
+  DLOG(INFO) << "OnFlimflamOnline";
+  // notify our child services
+  ServiceMap::iterator it;
+  for (it = services_.begin(); it != services_.end(); ++it) {
+    Service *service = static_cast<Service*>(it->second);
+    DCHECK(service != NULL);
+    service->OnFlimflamOnline();
+  }
+}
+
+void ServiceManager::OnFlimflamOffline() {
+  DLOG(INFO) << "OnFlimflamOffline";
+  // notify our child services
+  ServiceMap::iterator it;
+  for (it = services_.begin(); it != services_.end(); ++it) {
+    Service *service = static_cast<Service*>(it->second);
+    DCHECK(service != NULL);
+    service->OnFlimflamOffline();
+  }
 }
 
 }  // namespace cashew

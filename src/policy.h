@@ -31,6 +31,9 @@ class Policy {
     virtual bool ShouldEmitDataPlansUpdate(const DataPlanList& old_plans,
         const DataPlanList& new_plans) const = 0;
 
+    // must usage API requests for a cellular service be sent over the air?
+    virtual bool UsageRequestsMustBeSentOTA() const = 0;
+
     // factory
     // return appropriate concrete impl for |carrier|
     // caller owns returned Policy and is responsible for deleting it

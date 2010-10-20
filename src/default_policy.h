@@ -27,6 +27,8 @@ class DefaultPolicy: public Policy {
     virtual bool ShouldEmitDataPlansUpdate(const DataPlanList& old_plans,
         const DataPlanList& new_plans) const;
 
+    virtual bool UsageRequestsMustBeSentOTA() const;
+
   private:
     // carrier
     const std::string carrier_;

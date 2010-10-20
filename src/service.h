@@ -70,12 +70,18 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // NOTE: for now, should always be kTypeCellular
     virtual Type GetType() const;
 
+    // convert type string to Type enum value
+    static Type TypeFromString(const std::string& type);
+
     // get Device object for this service
     // this can return NULL if we don't yet have Device info
     virtual Device* GetDevice() const;
 
     // get data plan info, formatted for D-Bus
     virtual DBusDataPlanList GetDBusDataPlans() const;
+
+    // do we think that we're the default service at this time?
+    virtual bool IsDefaultService() const;
 
     // Flimflam Service D-Bus Proxy methods
 
@@ -94,6 +100,18 @@ class Service : public org::chromium::flimflam::Service_proxy,
     virtual void OnRequestComplete(const DataPlanProvider *provider,
                                    bool successful,
                                    const Value *parsed_usage_update);
+
+    // Service Manager methods
+
+    // we've received an update from our parent about whether or not we're the
+    // default service
+    virtual void OnDefaultServiceUpdate(bool is_default_service);
+
+    // we've received an update from our parent that Flimflam has come online
+    virtual void OnFlimflamOnline();
+
+    // we've received an update from our parent that Flimflam has gone offline
+    virtual void OnFlimflamOffline();
 
   private:
     // back pointer to our parent ServiceManager
@@ -135,11 +153,11 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // carrier policy
     Policy *policy_;
 
+    // do we think that we're the default service?
+    bool is_default_service_;
+
     // convert state string to State enum value
     State StateFromString(const std::string& state) const;
-
-    // convert type string to Type enum value
-    Type TypeFromString(const std::string& type) const;
 
     // we've received updated Device info from Flimflam
     void OnDeviceUpdate(const DBus::Path& device_path);
@@ -195,6 +213,34 @@ class Service : public org::chromium::flimflam::Service_proxy,
 
     // usage API request returned an error result
     void OnCrosUsageErrorResult(const std::string& status);
+
+    // do we think that we're connected at this time?
+    bool IsConnected() const;
+
+    // we've just become connected
+    void OnConnected();
+
+    // we've just become disconnected
+    // NOTE: this means we've entered a state other than kStateReady, not
+    // that we're necessarily in kStateDisconnect
+    void OnDisconnected();
+
+    // are we currently sending periodic usage API requests?
+    bool IsSendingUsageRequests() const;
+
+    // based on our best current knowledge and our policy, should we be
+    // sending periodic usage API requests?
+    bool ShouldSendUsageRequests() const;
+
+    // stop sending periodic usage API requests
+    void StopSendingUsageRequests();
+
+    // start sending periodic usage API requests
+    void StartSendingUsageRequests();
+
+    // something has changed, so reevaluate whether or not we should be sending
+    // periodic usage API requests and adjust our behavior if necessary
+    void ReconsiderSendingUsageRequests();
 
     DISALLOW_COPY_AND_ASSIGN(Service);
 };

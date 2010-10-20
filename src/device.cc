@@ -58,9 +58,9 @@ const std::string& Device::GetCarrier() const {
 void Device::PropertyChanged(const std::string& property_name,
                              const DBus::Variant& new_value) {
   DLOG(INFO) << path_ << ": PropertyChanged: property_name = " << property_name;
-  if (property_name.compare(kFlimflamDeviceCarrierProperty) == 0) {
+  if (property_name == kFlimflamDeviceCarrierProperty) {
     OnCarrierUpdate(new_value.reader().get_string());
-  } else if (property_name.compare(kFlimflamDeviceTypeProperty) == 0) {
+  } else if (property_name == kFlimflamDeviceTypeProperty) {
     OnTypeUpdate(new_value.reader().get_string());
   } else {
     // we don't care about this property
@@ -70,25 +70,25 @@ void Device::PropertyChanged(const std::string& property_name,
 // Private methods
 
 Device::Type Device::TypeFromString(const std::string& type) const {
-  if (type.compare(kFlimflamDeviceTypeEthernet) == 0) {
+  if (type == kFlimflamDeviceTypeEthernet) {
     return kTypeEthernet;
   }
-  if (type.compare(kFlimflamDeviceTypeWifi) == 0) {
+  if (type == kFlimflamDeviceTypeWifi) {
     return kTypeWifi;
   }
-  if (type.compare(kFlimflamDeviceTypeWimax) == 0) {
+  if (type == kFlimflamDeviceTypeWimax) {
     return kTypeWimax;
   }
-  if (type.compare(kFlimflamDeviceTypeBluetooth) == 0) {
+  if (type == kFlimflamDeviceTypeBluetooth) {
     return kTypeBluetooth;
   }
-  if (type.compare(kFlimflamDeviceTypeGPS) == 0) {
+  if (type == kFlimflamDeviceTypeGPS) {
     return kTypeGPS;
   }
-  if (type.compare(kFlimflamDeviceTypeCellular) == 0) {
+  if (type == kFlimflamDeviceTypeCellular) {
     return kTypeCellular;
   }
-  if (type.compare(kFlimflamDeviceTypeVendor) == 0) {
+  if (type == kFlimflamDeviceTypeVendor) {
     return kTypeVendor;
   }
   return kTypeUnknown;
@@ -98,8 +98,8 @@ void Device::OnCarrierUpdate(const std::string& carrier) {
   DLOG(INFO) << path_ << ": OnCarrierUpdate: carrier = " << carrier;
   // only propagate this to parent Service if there's been a change
   // we expect to see only one such change (from "Unknown")
-  if (carrier_.compare(carrier)) {
-    if (carrier_.compare(kCarrierUnknown)) {
+  if (carrier_ != carrier) {
+    if (carrier_ != kCarrierUnknown) {
       LOG(WARNING) << path_ << ": OnCarrierUpdate: carrier change from "
           << carrier_ << " to " << carrier << "!";
     }
