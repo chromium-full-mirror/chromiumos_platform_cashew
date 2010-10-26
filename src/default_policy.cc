@@ -9,7 +9,8 @@
 namespace cashew {
 
 // default update timer interval in seconds
-static const guint kDefaultPolicyUpdateTimerIdleSecs = 60;
+static const guint kSecondsPerMinute = 60;
+static const guint kDefaultPolicyUpdateTimerIdleSecs = 10 * kSecondsPerMinute;
 
 DefaultPolicy::DefaultPolicy(const std::string& carrier) : carrier_(carrier) {
 }

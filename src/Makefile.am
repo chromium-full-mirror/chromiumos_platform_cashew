@@ -115,7 +115,8 @@ check_PROGRAMS = cashew_unittest
 
 cashew_unittest_SOURCES = \
   cashew_unittest.cc \
-  data_plan_unittest.cc
+  data_plan_unittest.cc \
+  default_policy_unittest.cc
 
 GTEST_CFLAGS =
 GTEST_LIBS = -lgtest
