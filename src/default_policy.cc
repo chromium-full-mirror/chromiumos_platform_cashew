@@ -35,6 +35,10 @@ bool DefaultPolicy::UsageRequestsMustBeSentOTA() const {
   return true;
 }
 
+bool DefaultPolicy::ZonelessTimeStringsAreLocal() const {
+  return true;
+}
+
 // private methods
 
 }  // namespace cashew

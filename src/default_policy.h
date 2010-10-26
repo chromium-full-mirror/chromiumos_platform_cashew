@@ -29,6 +29,8 @@ class DefaultPolicy: public Policy {
 
     virtual bool UsageRequestsMustBeSentOTA() const;
 
+    virtual bool ZonelessTimeStringsAreLocal() const;
+
   private:
     // carrier
     const std::string carrier_;

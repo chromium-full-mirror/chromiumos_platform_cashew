@@ -293,7 +293,7 @@ void Service::OnRequestComplete(const DataPlanProvider *provider,
       continue;
     }
     DCHECK(plan_dict != NULL);
-    DataPlan *plan = DataPlan::FromDictionaryValue(plan_dict);
+    DataPlan *plan = DataPlan::FromDictionaryValue(plan_dict, policy_);
     if (plan == NULL) {
       LOG(WARNING) << path_
           << ": OnRequestComplete: could not convert plan[" << i << "]";

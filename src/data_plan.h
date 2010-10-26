@@ -17,6 +17,7 @@
 namespace cashew {
 
 class DataPlan;
+class Policy;
 
 // byte count
 // TODO(vlaviano): this should be a uint64, but libcros/Chrome expects this
@@ -71,13 +72,15 @@ class DataPlan {
     virtual DBusDataPlan ToDBusFormat() const;
 
     // construct DataPlan from DictionaryValue
-    static DataPlan* FromDictionaryValue(const DictionaryValue *value);
+    static DataPlan* FromDictionaryValue(const DictionaryValue *value,
+                                         const Policy *policy);
 
-    // convert ISO8601 time value in UTC to base::Time
+    // convert ISO 8601 time value to base::Time
     // returns true on success and false on failure
     // |time_out| must not be NULL and is set on a successful return
-    static bool TimeFromISO8601UTC(const std::string& time_8601_utc,
-                                   base::Time *time_out);
+    static bool TimeFromIso8601(const std::string& time_8601,
+                                base::Time *time_out,
+                                bool zoneless_strings_are_local);
 
   private:
     // human-readable plan name

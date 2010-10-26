@@ -8,6 +8,8 @@
 
 #include <glog/logging.h>
 
+#include "src/policy.h"
+
 namespace cashew {
 
 // libcros CellularDataPlan property names
@@ -104,8 +106,10 @@ DBusDataPlan DataPlan::ToDBusFormat() const {
 }
 
 // static
-DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value) {
-  DCHECK(value != NULL);
+DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value,
+                                        const Policy *policy) {
+  CHECK_NOTNULL(value);
+  CHECK_NOTNULL(policy);
   std::string last_update_iso8601;
   if (!value->GetString(kCrosUsageDataPlanLastUpdateProperty,
                         &last_update_iso8601)) {
@@ -114,7 +118,8 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value) {
   }
   DLOG(INFO) << "FromDictionaryValue: last update = " << last_update_iso8601;
   base::Time last_update;
-  if (!TimeFromISO8601UTC(last_update_iso8601, &last_update)) {
+  bool local = policy->ZonelessTimeStringsAreLocal();
+  if (!TimeFromIso8601(last_update_iso8601, &last_update, local)) {
     LOG(WARNING) << "FromDictionaryValue: could not convert last update time";
     return NULL;
   }
@@ -174,7 +179,7 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value) {
   }
   DLOG(INFO) << "FromDictionaryValue: start time = " << start_time_iso8601;
   base::Time start_time;
-  if (!TimeFromISO8601UTC(start_time_iso8601, &start_time)) {
+  if (!TimeFromIso8601(start_time_iso8601, &start_time, local)) {
     LOG(WARNING) << "FromDictionaryValue: could not convert start time";
     return NULL;
   }
@@ -187,7 +192,7 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value) {
   }
   DLOG(INFO) << "FromDictionaryValue: end time = " << end_time_iso8601;
   base::Time end_time;
-  if (!TimeFromISO8601UTC(end_time_iso8601, &end_time)) {
+  if (!TimeFromIso8601(end_time_iso8601, &end_time, local)) {
     LOG(WARNING) << "FromDictionaryValue: could not convert end time";
     return NULL;
   }
@@ -203,22 +208,51 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value) {
 }
 
 // static
-bool DataPlan::TimeFromISO8601UTC(const std::string& time_8601_utc,
-                                  base::Time *time_out) {
-  DCHECK(time_out != NULL);
-  static const char *kISO8601UTCTimeFormat = "%Y-%m-%dT%H:%M:%SZ";
+bool DataPlan::TimeFromIso8601(const std::string& time_8601,
+                               base::Time *time_out,
+                               bool zoneless_strings_are_local) {
+  CHECK_NOTNULL(time_out);
+  static const char *kIso8601UtcFormat = "%Y-%m-%dT%H:%M:%SZ";
+  static const char *kIso8601ZonelessFormat = "%Y-%m-%dT%H:%M:%S";
   struct tm tm;
-  if (strptime(time_8601_utc.c_str(), kISO8601UTCTimeFormat, &tm) == NULL) {
-    DLOG(WARNING) << "TimeFromISO8601UTC: strptime failed for time string: "
-        << time_8601_utc;
-    return false;
-  }
   time_t tt;
-  // NOTE: timegm interprets its input as being in UTC.
-  if ((tt = timegm(&tm)) == -1) {
-    DLOG(WARNING) << "TimeFromISO8601UTC: timegm failed";
+  bool tm_is_utc;
+
+  // convert from ISO 8601 string to struct tm
+  // first try the expected format (ISO 8601 with UTC 'Z' suffix)
+  // if that fails, try format with no timezone suffix
+  // we'll interpret this as either UTC or local time based on input flag
+  // TODO(vlaviano): support +/-nn:nn timezone specifier
+  if (strptime(time_8601.c_str(), kIso8601UtcFormat, &tm) != NULL) {
+    tm_is_utc = true;
+  } else if (strptime(time_8601.c_str(), kIso8601ZonelessFormat, &tm) != NULL) {
+    if (zoneless_strings_are_local) {
+      tm_is_utc = false;
+    } else {
+      tm_is_utc = true;
+    }
+  } else {
+    DLOG(WARNING) << "TimeFromIso8601: strptime failed for time string: "
+        << time_8601;
     return false;
   }
+
+  // convert from struct tm to time_t
+  if (tm_is_utc) {
+    // NOTE: timegm interprets its input as being in UTC.
+    if ((tt = timegm(&tm)) == -1) {
+      DLOG(WARNING) << "TimeFromIso8601: timegm failed";
+      return false;
+    }
+  } else {
+    // NOTE: mktime interprets its input as being in local time.
+    if ((tt = mktime(&tm)) == -1) {
+      DLOG(WARNING) << "TimeFromIso8601: mktime failed";
+      return false;
+    }
+  }
+
+  // convert from time_t to base::Time
   *time_out = base::Time::FromTimeT(tt);
   return true;
 }
