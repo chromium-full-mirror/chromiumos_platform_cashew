@@ -67,6 +67,9 @@ class LibcurlHttpFetcher : public HttpFetcher {
   void set_retry_seconds(int seconds) { retry_seconds_ = seconds; }
 
  private:
+  // Asks libcurl for the http response code and stores it in the object.
+  void GetHttpResponseCode();
+
   // Resumes a transfer where it left off. This will use the
   // HTTP Range: header to make a new connection from where the last
   // left off.

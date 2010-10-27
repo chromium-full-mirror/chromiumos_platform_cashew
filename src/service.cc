@@ -432,9 +432,9 @@ void Service::OnUsageUrlUpdate(const std::string& usage_url) {
   }
   usage_url_ = usage_url;
   if (provider_ != NULL) {
-    DCHECK(usage_url != provider_->GetUsageUrl());
+    DCHECK(usage_url_ != provider_->GetUsageUrl());
     StopSendingUsageRequests();
-    provider_->SetUsageUrl(usage_url);
+    provider_->SetUsageUrl(usage_url_);
     ReconsiderSendingUsageRequests();
   }
 }

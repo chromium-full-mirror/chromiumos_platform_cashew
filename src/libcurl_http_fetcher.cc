@@ -21,7 +21,6 @@ namespace cashew {
 
 namespace {
 const int kMaxRetriesCount = 20;
-const char kCACertificatesPath[] = "/usr/share/cashew/ca-certificates";
 }
 
 LibcurlHttpFetcher::~LibcurlHttpFetcher() {
@@ -73,11 +72,8 @@ void LibcurlHttpFetcher::ResumeTransfer(const std::string& url) {
   CHECK_EQ(curl_easy_setopt(curl_handle_, CURLOPT_MAXREDIRS, kMaxRedirects),
            CURLE_OK);
 
-  // Makes sure that peer certificate verification is enabled and restricts the
-  // set of trusted certificates.
+  // Makes sure that peer certificate verification is enabled
   CHECK_EQ(curl_easy_setopt(curl_handle_, CURLOPT_SSL_VERIFYPEER, 1), CURLE_OK);
-  CHECK_EQ(curl_easy_setopt(curl_handle_, CURLOPT_CAPATH, kCACertificatesPath),
-           CURLE_OK);
 
   CHECK_EQ(curl_multi_add_handle(curl_multi_handle_, curl_handle_), CURLM_OK);
   transfer_in_progress_ = true;
@@ -111,15 +107,12 @@ void LibcurlHttpFetcher::CurlPerformOnce() {
     retcode = curl_multi_perform(curl_multi_handle_, &running_handles);
   }
   if (0 == running_handles) {
-    long http_response_code = 0;  // NOLINT
-    if (curl_easy_getinfo(curl_handle_,
-                          CURLINFO_RESPONSE_CODE,
-                          &http_response_code) == CURLE_OK) {
-      LOG(INFO) << "HTTP response code: " << http_response_code;
+    GetHttpResponseCode();
+    if (http_response_code_) {
+      LOG(INFO) << "HTTP response code: " << http_response_code_;
     } else {
-      LOG(ERROR) << "Unable to get http response code.";
+      LOG(WARNING) << "Unable to get http response code.";
     }
-    http_response_code_ = static_cast<int>(http_response_code);
 
     // we're done!
     CleanUp();
@@ -141,9 +134,9 @@ void LibcurlHttpFetcher::CurlPerformOnce() {
       return;
     } else {
       if (delegate_) {
-        // success is when http_response_code is 2xx
-        bool success = (http_response_code >= 200) &&
-            (http_response_code < 300);
+        // success is when http_response_code_ is 2xx
+        bool success = (http_response_code_ >= 200) &&
+            (http_response_code_ < 300);
         delegate_->TransferComplete(this, success);
       }
     }
@@ -154,6 +147,7 @@ void LibcurlHttpFetcher::CurlPerformOnce() {
 }
 
 size_t LibcurlHttpFetcher::LibcurlWrite(void *ptr, size_t size, size_t nmemb) {
+  GetHttpResponseCode();
   DLOG(INFO) << "LibcurlWrite";
   {
     double transfer_size_double;
@@ -304,6 +298,19 @@ void LibcurlHttpFetcher::CleanUp() {
     curl_multi_handle_ = NULL;
   }
   transfer_in_progress_ = false;
+}
+
+void LibcurlHttpFetcher::GetHttpResponseCode() {
+  long http_response_code = 0;  // NOLINT
+  CURLcode result = curl_easy_getinfo(curl_handle_,
+                                      CURLINFO_RESPONSE_CODE,
+                                      &http_response_code);
+  if (result == CURLE_OK) {
+    http_response_code_ = static_cast<int>(http_response_code);
+  } else {
+    DLOG(WARNING) << "GetHttpResponseCode: curl_easy_getinfo failed: "
+        << curl_easy_strerror(result);
+  }
 }
 
 }  // namespace cashew
