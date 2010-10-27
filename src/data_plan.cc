@@ -97,10 +97,13 @@ DBusDataPlan DataPlan::ToDBusFormat() const {
   plan[kCellularDataPlanEndTime].writer().append_int64(
       end_time_.ToInternalValue());
   // omit max bytes field for unlimited plans
-  // can libcros/Chrome deal? if not, can set this to int64 max.
   if (type_ != kTypeUnlimited) {
     plan[kCellularDataPlanDataBytesMax].writer().append_int64(data_bytes_max_);
   }
+  // always send used bytes field, even if we had to assume a value of 0
+  // because this is an unlimited plan and the property was absent in the
+  // usage API replies that we received
+  // TODO(vlaviano): we'll be able to do better when we have local counters
   plan[kCellularDataPlanDataBytesUsed].writer().append_int64(data_bytes_used_);
   return plan;
 }
@@ -162,8 +165,14 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value,
 
   int used_bytes = 0;
   if (!value->GetInteger(kCrosUsageDataPlanUsedBytesProperty, &used_bytes)) {
-    LOG(WARNING) << "FromDictionaryValue: no used bytes property";
-    return NULL;
+    // used bytes is required for metered plans, optional for unlimited plans
+    if (plan_type != kTypeUnlimited) {
+      LOG(WARNING) << "FromDictionaryValue: no used bytes property";
+      return NULL;
+    } else {
+      DLOG(INFO)
+          << "FromDictionaryValue: no used bytes property (using default of 0)";
+    }
   }
   if (used_bytes < 0) {
     LOG(WARNING) << "FromDictionaryValue: used bytes is negative";
