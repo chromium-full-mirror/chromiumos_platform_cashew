@@ -4,12 +4,12 @@
 
 #include "src/data_plan_provider.h"
 
-#include <base/json/json_reader.h>
 #include <base/scoped_ptr.h>
-#include <base/values.h>
 #include <glog/logging.h>
 
+#include "src/json_reader.h"
 #include "src/libcurl_http_fetcher.h"
+#include "src/values.h"
 
 namespace cashew {
 
@@ -110,7 +110,6 @@ void DataPlanProvider::TransferComplete(HttpFetcher *fetcher,
 
   // carrier usage API has (we hope) given us a JSON-encoded result
   // log it and then parse it, converting it into a tree of Value nodes
-  // TODO(vlaviano): extend JSONReader to handle 64-bit ints
   const std::string json_encoded_usage_update(response_buffer_.begin(),
                                               response_buffer_.end());
   response_buffer_.clear();
@@ -122,8 +121,8 @@ void DataPlanProvider::TransferComplete(HttpFetcher *fetcher,
   int error_code;
   std::string error_msg;
   scoped_ptr<Value> parsed_usage_update(
-      base::JSONReader::ReadAndReturnError(json_encoded_usage_update, true,
-                                           &error_code, &error_msg));
+      JSONReader::ReadAndReturnError(json_encoded_usage_update, true,
+                                     &error_code, &error_msg));
   if (parsed_usage_update == NULL) {
     LOG(WARNING) << carrier_ << ": TransferComplete: could not parse json: "
         << "error code " << error_code << ": " << error_msg;

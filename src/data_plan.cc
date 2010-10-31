@@ -149,10 +149,11 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value,
   DLOG(INFO) << "FromDictionaryValue: converted plan type string to type "
       << plan_type;
 
-  int max_bytes = 0;
+  int64 max_bytes = 0;
   // we only expect max bytes for metered plans
   if (plan_type != kTypeUnlimited) {
-    if (!value->GetInteger(kCrosUsageDataPlanMaxBytesProperty, &max_bytes)) {
+    if (!GetInt64FromDictionary(*value, kCrosUsageDataPlanMaxBytesProperty,
+                                &max_bytes)) {
       LOG(WARNING) << "FromDictionaryValue: no max bytes property";
       return NULL;
     }
@@ -163,8 +164,9 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value,
     DLOG(INFO) << "FromDictionaryValue: max bytes = " << max_bytes;
   }
 
-  int used_bytes = 0;
-  if (!value->GetInteger(kCrosUsageDataPlanUsedBytesProperty, &used_bytes)) {
+  int64 used_bytes = 0;
+  if (!GetInt64FromDictionary(*value, kCrosUsageDataPlanUsedBytesProperty,
+                              &used_bytes)) {
     // used bytes is required for metered plans, optional for unlimited plans
     if (plan_type != kTypeUnlimited) {
       LOG(WARNING) << "FromDictionaryValue: no used bytes property";
@@ -295,6 +297,22 @@ bool DataPlan::CrosUsageStringToType(const std::string& type_string,
     return false;
   }
   return true;
+}
+
+// static
+bool DataPlan::GetInt64FromDictionary(const DictionaryValue& dict,
+                                      const std::string& key,
+                                      int64* out_value) {
+  CHECK_NOTNULL(out_value);
+  int generic_int_out = 0;
+  if (dict.GetInteger(key, &generic_int_out)) {
+    *out_value = generic_int_out;
+    return true;
+  }
+  if (dict.GetInteger64(key, out_value)) {
+    return true;
+  }
+  return false;
 }
 
 }  // namespace cashew

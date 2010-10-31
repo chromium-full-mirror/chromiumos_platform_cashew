@@ -5,13 +5,14 @@
 
     <tp:simple-type name="Timestamp" type="x">
       <tp:docstring>
-        A 64-bit integer representing time in seconds since the Epoch.
+        A 64-bit signed integer representing time in microseconds since the
+        base::Time Epoch. Use base::Time::FromInternalValue to reconstitute.
       </tp:docstring>
     </tp:simple-type>
 
     <tp:simple-type name="Bytes" type="x">
       <tp:docstring>
-        A 64-bit integer representing a byte count.
+        A 64-bit signed integer representing a byte count.
       </tp:docstring>
     </tp:simple-type>
 

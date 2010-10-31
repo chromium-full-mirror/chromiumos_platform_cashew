@@ -11,8 +11,9 @@
 
 #include <base/basictypes.h>  // NOLINT
 #include <base/time.h>  // NOLINT
-#include <base/values.h>  // NOLINT
 #include <dbus-c++/dbus.h>  // NOLINT
+
+#include "src/values.h"
 
 namespace cashew {
 
@@ -113,6 +114,13 @@ class DataPlan {
     // |type_out| must not be NULL and is set on a successful return
     static bool CrosUsageStringToType(const std::string& type_string,
                                       Type *type_out);
+
+    // converts the value associated with |key| in |dict| to an int64
+    // returns true on success and false on failure
+    // |out_value| must not be NULL and is set on a successful return
+    static bool GetInt64FromDictionary(const DictionaryValue& dict,
+                                       const std::string& key,
+                                       int64* out_value);
 
     DISALLOW_COPY_AND_ASSIGN(DataPlan);
 };

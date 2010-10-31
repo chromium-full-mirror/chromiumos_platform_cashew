@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <base/json/json_reader.h>
 #include <base/scoped_ptr.h>
 #include <gtest/gtest.h>
 
 #include "src/data_plan.h"
+#include "src/json_reader.h"
 #include "src/policy.h"
 
 namespace cashew {
@@ -36,6 +36,8 @@ class DataPlanTest: public ::testing::Test {
     static const char *kMeteredWithNoUsedBytesJSON;
     static const char *kUnlimitedWithUsedBytesJSON;
     static const char *kUnlimitedWithNoUsedBytesJSON;
+    static const char *k32BitSignedOverflowingMaxBytesJSON;
+    static const char *k32BitUnsignedOverflowingMaxBytesJSON;
 
     // test carrier for constructing policy
     static const char *kTestCarrierName;
@@ -79,6 +81,26 @@ const char *DataPlanTest::kUnlimitedWithNoUsedBytesJSON =
      "\"planType\" : \"UNLIMITED\","
      "\"expirationTime\" : \"2010-09-20T23:59:59\","
      "\"startTime\" : \"2010-09-20T00:00:00\""
+    "}";
+
+const char *DataPlanTest::k32BitSignedOverflowingMaxBytesJSON =
+    "{\"lastUpdate\" : \"2010-09-20T12:01:00Z\","
+     "\"planName\" : \"Super-Awesome Chromium OS Plan\","
+     "\"planType\" : \"METERED_PAID\","
+     "\"maxBytes\" : 2500000000,"
+     "\"usedBytes\" : 0,"
+     "\"expirationTime\" : \"2010-09-30T23:59:59\","
+     "\"startTime\" : \"2010-09-01T00:00:00\""
+    "}";
+
+const char *DataPlanTest::k32BitUnsignedOverflowingMaxBytesJSON =
+    "{\"lastUpdate\" : \"2010-09-20T12:01:00Z\","
+     "\"planName\" : \"Super-Awesome Chromium OS Plan\","
+     "\"planType\" : \"METERED_PAID\","
+     "\"maxBytes\" : 5000000000,"
+     "\"usedBytes\" : 0,"
+     "\"expirationTime\" : \"2010-09-30T23:59:59\","
+     "\"startTime\" : \"2010-09-01T00:00:00\""
     "}";
 
 const char *DataPlanTest::kTestCarrierName = "Test Carrier";
@@ -146,8 +168,7 @@ TEST_F(DataPlanDeathTest, NullTimeOutPtr) {
 }
 
 TEST_F(DataPlanTest, FromDictionaryValueMeteredWithUsedBytes) {
-  scoped_ptr<Value> value(base::JSONReader::Read(kMeteredWithUsedBytesJSON,
-                                                 true));
+  scoped_ptr<Value> value(JSONReader::Read(kMeteredWithUsedBytesJSON, true));
   ASSERT_TRUE(value != NULL);
   ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));
   const DictionaryValue *dict_value =
@@ -160,8 +181,7 @@ TEST_F(DataPlanTest, FromDictionaryValueMeteredWithUsedBytes) {
 }
 
 TEST_F(DataPlanTest, FromDictonaryValueMeteredWithNoUsedBytes) {
-  scoped_ptr<Value> value(base::JSONReader::Read(kMeteredWithNoUsedBytesJSON,
-                                                 true));
+  scoped_ptr<Value> value(JSONReader::Read(kMeteredWithNoUsedBytesJSON, true));
   ASSERT_TRUE(value != NULL);
   ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));
   const DictionaryValue *dict_value =
@@ -173,8 +193,7 @@ TEST_F(DataPlanTest, FromDictonaryValueMeteredWithNoUsedBytes) {
 }
 
 TEST_F(DataPlanTest, FromDictionaryValueUnlimitedWithUsedBytes) {
-  scoped_ptr<Value> value(base::JSONReader::Read(kUnlimitedWithUsedBytesJSON,
-                                                 true));
+  scoped_ptr<Value> value(JSONReader::Read(kUnlimitedWithUsedBytesJSON, true));
   ASSERT_TRUE(value != NULL);
   ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));
   const DictionaryValue *dict_value =
@@ -187,8 +206,8 @@ TEST_F(DataPlanTest, FromDictionaryValueUnlimitedWithUsedBytes) {
 }
 
 TEST_F(DataPlanTest, FromDictionaryValueUnlimitedWithNoUsedBytes) {
-  scoped_ptr<Value> value(base::JSONReader::Read(kUnlimitedWithNoUsedBytesJSON,
-                                                 true));
+  scoped_ptr<Value> value(JSONReader::Read(kUnlimitedWithNoUsedBytesJSON,
+                                           true));
   ASSERT_TRUE(value != NULL);
   ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));
   const DictionaryValue *dict_value =
@@ -199,6 +218,32 @@ TEST_F(DataPlanTest, FromDictionaryValueUnlimitedWithNoUsedBytes) {
   // used bytes property should have been set to the default of 0.
   ASSERT_TRUE(plan != NULL);
   EXPECT_EQ(0, plan->GetDataBytesUsed());
+}
+
+TEST_F(DataPlanTest, FromDictionaryValue32BitSignedOverflowingMaxBytes) {
+  scoped_ptr<Value> value(JSONReader::Read(k32BitSignedOverflowingMaxBytesJSON,
+                                           true));
+  ASSERT_TRUE(value != NULL);
+  ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));
+  const DictionaryValue *dict_value =
+      static_cast<const DictionaryValue*>(value.get());
+  DataPlan *plan = DataPlan::FromDictionaryValue(dict_value, policy_);
+  // we expect the call to have succeeded and max bytes to be set properly
+  ASSERT_TRUE(plan != NULL);
+  EXPECT_EQ(2500000000LL, plan->GetDataBytesMax());
+}
+
+TEST_F(DataPlanTest, FromDictionaryValue32BitUnsignedOverflowingMaxBytes) {
+  scoped_ptr<Value> value(JSONReader::Read(
+      k32BitUnsignedOverflowingMaxBytesJSON, true));
+  ASSERT_TRUE(value != NULL);
+  ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));
+  const DictionaryValue *dict_value =
+      static_cast<const DictionaryValue*>(value.get());
+  DataPlan *plan = DataPlan::FromDictionaryValue(dict_value, policy_);
+  // we expect the call to have succeeded and max bytes to be set properly
+  ASSERT_TRUE(plan != NULL);
+  EXPECT_EQ(5000000000LL, plan->GetDataBytesMax());
 }
 
 }  // namespace cashew

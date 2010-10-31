@@ -10,9 +10,9 @@
 
 #include <base/basictypes.h>  // NOLINT
 #include <base/scoped_ptr.h>  // NOLINT
-#include <base/values.h>  // NOLINT
 
 #include "src/http_fetcher.h"
+#include "src/values.h"
 
 namespace cashew {
 

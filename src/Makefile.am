@@ -24,6 +24,8 @@ libcashew_la_SOURCES = \
   device.h \
   device.cc \
   http_fetcher.h \
+  json_reader.h \
+  json_reader.cc \
   libcurl_http_fetcher.h \
   libcurl_http_fetcher.cc \
   policy.h \
@@ -31,7 +33,9 @@ libcashew_la_SOURCES = \
   service.h \
   service.cc \
   service_manager.h \
-  service_manager.cc
+  service_manager.cc \
+  values.h \
+  values.cc
 
 # D-Bus server stub generation
 DBUSXX_XML2CPP = dbusxx-xml2cpp
@@ -116,7 +120,9 @@ check_PROGRAMS = cashew_unittest
 cashew_unittest_SOURCES = \
   cashew_unittest.cc \
   data_plan_unittest.cc \
-  default_policy_unittest.cc
+  default_policy_unittest.cc \
+  json_reader_unittest.cc \
+  values_unittest.cc
 
 GTEST_CFLAGS =
 GTEST_LIBS = -lgtest
