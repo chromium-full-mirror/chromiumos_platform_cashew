@@ -145,6 +145,9 @@ void ServiceManager::DeleteServices(ServiceMap *service_map) {
         static_cast<std::string>(service_map->begin()->first);
     DLOG(INFO) << "DeleteServices: deleting service: " << path;
     Service *service = static_cast<Service *>(service_map->begin()->second);
+    DCHECK(service != NULL);
+    DCHECK(service != default_cellular_service_);
+    DCHECK(*service_map == services_ || GetService(service->GetPath()) == NULL);
     delete service;
     service_map->erase(service_map->begin());
   }
@@ -253,6 +256,16 @@ void ServiceManager::OnServicesUpdate(const ServicePathList& paths) {
     }
   }
 
+  // clear default service if it failed to appear in the update and we're
+  // about to delete it
+  if (default_cellular_service_ != NULL) {
+    ServiceMap::const_iterator it =
+        old_services.find(default_cellular_service_->GetPath());
+    if (it != old_services.end()) {
+      ClearDefaultCellularService();
+    }
+  }
+
   // services left in old_services failed to appear in the update: delete them
   DeleteServices(&old_services);
 
@@ -297,6 +310,7 @@ void ServiceManager::OnDefaultServiceUpdate(const DBus::Path *path) {
 void ServiceManager::ClearDefaultCellularService() {
   DLOG(INFO) << "ClearDefaultCellularService";
   if (default_cellular_service_ != NULL) {
+    DCHECK(GetService(default_cellular_service_->GetPath()) != NULL);
     DCHECK(default_cellular_service_->IsDefaultService());
     default_cellular_service_->OnDefaultServiceUpdate(false);
     default_cellular_service_ = NULL;
