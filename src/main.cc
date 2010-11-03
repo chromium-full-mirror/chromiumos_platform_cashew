@@ -21,6 +21,10 @@
 
 namespace cashew {
 
+static const int kMillisecondsPerSecond = 1000;
+static const int kDBusConnectionTimeoutMilliseconds =
+    1 * kMillisecondsPerSecond;
+
 typedef int Signal;
 typedef void (*SignalHandler)(Signal signal);
 
@@ -119,6 +123,7 @@ int main(int argc, char *argv[]) {
 
   DLOG(INFO) << "creating service manager";
   DBus::Connection client_conn = DBus::Connection::SystemBus();
+  client_conn.set_timeout(cashew::kDBusConnectionTimeoutMilliseconds);
   cashew::service_manager = new(std::nothrow) cashew::ServiceManager(
       client_conn);
   if (cashew::service_manager == NULL) {
@@ -131,6 +136,7 @@ int main(int argc, char *argv[]) {
   // TODO(vlaviano): can we share a single conn for client and server roles?
   DBus::Connection server_conn = DBus::Connection::SystemBus();
   server_conn.request_name(cashew::CashewServer::kServiceName);
+  server_conn.set_timeout(cashew::kDBusConnectionTimeoutMilliseconds);
   cashew::server = new(std::nothrow) cashew::CashewServer(server_conn,
       cashew::service_manager);
   if (cashew::server == NULL) {

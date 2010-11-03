@@ -78,6 +78,20 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
     // a child Service wants us to emit an update about its data plans
     virtual void EmitDataPlansUpdate(const Service& service);
 
+    // glib integration interface
+
+    // get idle/timer source id
+    virtual guint GetGetPropertiesSourceId() const;
+
+    // set idle/timer source id
+    virtual void SetGetPropertiesSourceId(guint source_id);
+
+    // are we in the process of retrying our GetProperties call?
+    virtual bool RetryingGetProperties() const;
+
+    // set the retrying flag
+    virtual void OnRetryingGetProperties(bool retrying);
+
   private:
     // D-Bus connection owned by our creator
     // shared with Service objs that we create
@@ -100,12 +114,26 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
     // global connectivity state most recently reported by Flimflam
     ConnectivityState connectivity_state_;
 
+    // GetProperties timer glib source id
+    // 0 means no source
+    guint get_properties_source_id_;
+
+    // are we in the process of retrying our GetProperties call?
+    // this flag exists to distinguish between our initial g_idle_add call
+    // and our subsequent timer calls
+    bool retrying_get_properties_;
+
     // delete a collection of services
     void DeleteServices(ServiceMap *service_map);
 
+    // glib integration: static wrapper for GetFlimflamProperties
+    // takes object ptr as data and invokes object->GetFlimflamProperties()
+    static gboolean StaticGetFlimflamPropertiesCallback(gpointer data);
+
     // get interesting properties from Flimflam such as Services and
     // DefaultTechnology
-    void GetFlimflamProperties();
+    // returns true on success and false on failure
+    bool GetFlimflamProperties();
 
     // we've received updated DefaultTechnology info from Flimflam
     void OnDefaultTechnologyUpdate(const std::string& default_technology);

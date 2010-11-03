@@ -5,6 +5,8 @@
 #ifndef SRC_DEVICE_H_
 #define SRC_DEVICE_H_
 
+#include <glib.h>
+
 #include <string>
 
 #include <base/basictypes.h>  // NOLINT
@@ -54,6 +56,20 @@ class Device : public org::chromium::flimflam::Device_proxy,
     virtual void PropertyChanged(const std::string& property_name,
                                  const DBus::Variant& new_value);
 
+    // glib integration interface
+
+    // get idle/timer source id
+    virtual guint GetGetPropertiesSourceId() const;
+
+    // set idle/timer source id
+    virtual void SetGetPropertiesSourceId(guint source_id);
+
+    // are we in the process of retrying our GetProperties call?
+    virtual bool RetryingGetProperties() const;
+
+    // set the retrying flag
+    virtual void OnRetryingGetProperties(bool retrying);
+
   private:
     // back pointer to our parent Service
     Service * const parent_;
@@ -68,6 +84,15 @@ class Device : public org::chromium::flimflam::Device_proxy,
     // cellular carrier
     std::string carrier_;
 
+    // GetProperties timer glib source id
+    // 0 means no source
+    guint get_properties_source_id_;
+
+    // are we in the process of retrying our GetProperties call?
+    // this flag exists to distinguish between our initial g_idle_add call
+    // and our subsequent timer calls
+    bool retrying_get_properties_;
+
     // convert type string to Type enum value
     Type TypeFromString(const std::string& type) const;
 
@@ -77,8 +102,13 @@ class Device : public org::chromium::flimflam::Device_proxy,
     // we've received updated Type info from Flimflam
     void OnTypeUpdate(const std::string& type);
 
+    // glib integration: static wrapper for GetDeviceProperties
+    // takes object ptr as data and invokes object->GetDeviceProperties
+    static gboolean StaticGetDevicePropertiesCallback(gpointer data);
+
     // get device properties from Flimflam
-    void GetDeviceProperties();
+    // returns true on success and false on failure
+    bool GetDeviceProperties();
 
     DISALLOW_COPY_AND_ASSIGN(Device);
 };

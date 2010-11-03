@@ -60,6 +60,10 @@ static const char *kCrosUsageStatusServiceUnavailable = "SERVICE UNAVAILABLE";
 static const char *kCrosUsageStatusRequestRefused = "REQUEST REFUSED";
 static const char *kCrosUsageStatusUnknownDevice = "UNKNOWN DEVICE";
 
+// GetServiceProperties retry interval
+static const guint kSecondsPerMinute = 60;
+static const guint kGetServicePropertiesIntervalSeconds = 1 * kSecondsPerMinute;
+
 Service::Service(ServiceManager * const parent,
                  DBus::Connection& connection,  // NOLINT
                  const DBus::Path& path)
@@ -68,10 +72,16 @@ Service::Service(ServiceManager * const parent,
       state_(kStateUnknown), type_(kTypeUnknown), device_(NULL),
       provider_(NULL), request_in_progress_(false),
       update_timeout_source_(NULL), policy_(NULL),
-      is_default_service_(false) {
-  // init our state with a GetProperties() call to our Flimflam service path
-  // we'll update this state by monitoring PropertyChanged signals
-  GetServiceProperties();
+      is_default_service_(false), get_properties_source_id_(0),
+      retrying_get_properties_(false) {
+  // schedule a GetProperties() call to our Flimflam service path to init state
+  // we'll keep trying periodically until we succeed
+  // we'll subsequently update this state by monitoring PropertyChanged signals
+  get_properties_source_id_ =
+      g_idle_add(StaticGetServicePropertiesCallback, this);
+  if (get_properties_source_id_ == 0) {
+    LOG(ERROR) << path_ << ": ctor: g_idle_add failed";
+  }
 }
 
 Service::~Service() {
@@ -81,6 +91,10 @@ Service::~Service() {
     DLOG(INFO) << path_ << ": deleting device " << device_->GetPath();
     delete device_;
     device_ = NULL;
+  }
+  if (get_properties_source_id_ != 0 &&
+      !g_source_remove(get_properties_source_id_)) {
+    DLOG(WARNING) << path_ << ": dtor: g_source_remove failed";
   }
 }
 
@@ -348,6 +362,24 @@ void Service::OnFlimflamOffline() {
   ReconsiderSendingUsageRequests();
 }
 
+// glib integration interface
+
+guint Service::GetGetPropertiesSourceId() const {
+  return get_properties_source_id_;
+}
+
+void Service::SetGetPropertiesSourceId(guint source_id) {
+  get_properties_source_id_ = source_id;
+}
+
+bool Service::RetryingGetProperties() const {
+  return retrying_get_properties_;
+}
+
+void Service::OnRetryingGetProperties(bool retrying) {
+  retrying_get_properties_ = retrying;
+}
+
 // Private methods
 
 Service::State Service::StateFromString(const std::string& state) const {
@@ -439,7 +471,43 @@ void Service::OnUsageUrlUpdate(const std::string& usage_url) {
   }
 }
 
-void Service::GetServiceProperties() {
+// static
+gboolean Service::StaticGetServicePropertiesCallback(gpointer data) {
+  Service *service = reinterpret_cast<Service*>(data);
+  CHECK_NOTNULL(service);
+  DCHECK_NE(service->GetGetPropertiesSourceId(), 0);
+  if (!service->GetServiceProperties()) {
+    // call failed, so try again later
+    DLOG(WARNING) << service->GetPath()
+        << ": StaticGetServicePropertiesCallback: "
+        << "GetServiceProperties failed, will retry in "
+        << kGetServicePropertiesIntervalSeconds << " secs";
+    // if we've arrived here from our first g_idle_add call, set up a timer
+    if (!service->RetryingGetProperties()) {
+      guint source_id =
+          g_timeout_add_seconds(kGetServicePropertiesIntervalSeconds,
+                                StaticGetServicePropertiesCallback, service);
+      service->SetGetPropertiesSourceId(source_id);
+      if (source_id == 0) {
+        LOG(ERROR) << service->GetPath()
+            << ": StaticGetServicePropertiesCallback: "
+            << "g_timeout_add_seconds failed";
+        return FALSE;  // get rid of old glib source and give up
+      }
+      service->OnRetryingGetProperties(true);
+      // get rid of our old glib source, but our new timer will call us
+      return FALSE;
+    }
+    // otherwise, our timer is already set up
+    // return TRUE to indicate that we want to be called again later
+    return TRUE;
+  }
+  service->SetGetPropertiesSourceId(0);
+  service->OnRetryingGetProperties(false);
+  return FALSE;  // we succeeded, so don't repeat
+}
+
+bool Service::GetServiceProperties() {
   DLOG(INFO) << path_ << ": GetServiceProperties";
   PropertyMap properties;
   // dbus-c++ throws exceptions
@@ -452,13 +520,11 @@ void Service::GetServiceProperties() {
     LOG(WARNING) << path_
         << ": GetServiceProperties: GetProperties() -> Exception: "
         << error.name() << ": " << error.message();
-    // TODO(vlaviano): schedule another attempt later
-    return;
+    return false;
   } catch (...) {  // NOLINT
     LOG(WARNING) << path_
         << ": GetServiceProperties: GetProperties() -> Exception";
-    // TODO(vlaviano): schedule another attempt later
-    return;
+    return false;
   }
   DLOG(INFO) << path_ << ": GetServiceProperties: Received "
       << properties.size() << " properties";
@@ -488,7 +554,7 @@ void Service::GetServiceProperties() {
   }
   // don't expect to find Cellular.* properties if we're not a cellular service
   if (type_ != kTypeCellular) {
-    return;
+    return true;
   }
   it = properties.find(kFlimflamServiceUsageUrlProperty);
   if (it != properties.end()) {
@@ -498,6 +564,7 @@ void Service::GetServiceProperties() {
     DLOG(WARNING) << path_
         << ": GetServiceProperties: no Cellular.UsageUrl property";
   }
+  return true;
 }
 
 void Service::DeleteDataPlans(DataPlanList *data_plans) {
@@ -564,8 +631,9 @@ gboolean Service::UpdateTimeoutCallback() {
 
 // static
 gboolean Service::StaticUpdateTimeoutCallback(gpointer data) {
-  CHECK_NOTNULL(data);
-  return reinterpret_cast<Service*>(data)->UpdateTimeoutCallback();
+  Service *service = reinterpret_cast<Service*>(data);
+  CHECK_NOTNULL(service);
+  return service->UpdateTimeoutCallback();
 }
 
 bool Service::CreateUpdateTimer() {

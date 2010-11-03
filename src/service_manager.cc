@@ -28,21 +28,36 @@ static const char *kFlimflamStateOnline = "online";
 // Flimflam service types
 static const char *kTypeCellular = "cellular";
 
+// GetFlimflamProperties retry interval
+static const guint kSecondsPerMinute = 60;
+static const guint kGetFlimflamPropertiesIntervalSeconds =
+    1 * kSecondsPerMinute;
+
 ServiceManager::ServiceManager(DBus::Connection& connection)  // NOLINT
     : DBus::ObjectProxy(connection, kFlimflamManagerPath,
                         kFlimflamManagerName),
       connection_(connection), cashew_server_(NULL),
       default_technology_(Service::kTypeUnknown),
       default_cellular_service_(NULL),
-      connectivity_state_(kConnectivityStateUnknown) {
-  // init our state with a GetProperties() call to Flimflam
-  // we'll update this state by monitoring PropertyChanged signals
-  GetFlimflamProperties();
+      connectivity_state_(kConnectivityStateUnknown),
+      get_properties_source_id_(0), retrying_get_properties_(false) {
+  // schedule a GetProperties() call to Flimflam to init our state
+  // we'll keep trying periodically until we succeed
+  // we'll subsequently update this state by monitoring PropertyChanged signals
+  get_properties_source_id_ =
+      g_idle_add(StaticGetFlimflamPropertiesCallback, this);
+  if (get_properties_source_id_ == 0) {
+    LOG(ERROR) << "ctor: g_idle_add failed";
+  }
 }
 
 ServiceManager::~ServiceManager() {
   ClearDefaultCellularService();
   DeleteServices(&services_);
+  if (get_properties_source_id_ != 0 &&
+      !g_source_remove(get_properties_source_id_)) {
+    DLOG(WARNING) << "dtor: g_source_remove failed";
+  }
 }
 
 const Service* ServiceManager::GetService(const std::string& service_path)
@@ -136,6 +151,24 @@ void ServiceManager::EmitDataPlansUpdate(const Service& service) {
   cashew_server_->EmitDataPlansUpdate(service);
 }
 
+// glib integration interface
+
+guint ServiceManager::GetGetPropertiesSourceId() const {
+  return get_properties_source_id_;
+}
+
+void ServiceManager::SetGetPropertiesSourceId(guint source_id) {
+  get_properties_source_id_ = source_id;
+}
+
+bool ServiceManager::RetryingGetProperties() const {
+  return retrying_get_properties_;
+}
+
+void ServiceManager::OnRetryingGetProperties(bool retrying) {
+  retrying_get_properties_ = retrying;
+}
+
 // Private methods
 
 void ServiceManager::DeleteServices(ServiceMap *service_map) {
@@ -153,7 +186,42 @@ void ServiceManager::DeleteServices(ServiceMap *service_map) {
   }
 }
 
-void ServiceManager::GetFlimflamProperties() {
+// static
+gboolean ServiceManager::StaticGetFlimflamPropertiesCallback(gpointer data) {
+  ServiceManager *service_manager = reinterpret_cast<ServiceManager*>(data);
+  CHECK_NOTNULL(service_manager);
+  DCHECK_NE(service_manager->GetGetPropertiesSourceId(), 0);
+  if (!service_manager->GetFlimflamProperties()) {
+    // call failed, so try again later
+    DLOG(WARNING) << "StaticGetFlimflamPropertiesCallback: "
+        << "GetFlimflamProperties failed, will retry in "
+        << kGetFlimflamPropertiesIntervalSeconds << " secs";
+    // if we've arrived here from our first g_idle_add call, set up a timer
+    if (!service_manager->RetryingGetProperties()) {
+      guint source_id =
+          g_timeout_add_seconds(kGetFlimflamPropertiesIntervalSeconds,
+                                StaticGetFlimflamPropertiesCallback,
+                                service_manager);
+      service_manager->SetGetPropertiesSourceId(source_id);
+      if (source_id == 0) {
+        LOG(ERROR) << "StaticGetFlimflamPropertiesCallback: "
+            << "g_timeout_add_seconds failed";
+        return FALSE;  // get rid of old glib source and give up
+      }
+      service_manager->OnRetryingGetProperties(true);
+      // get rid of our old glib source, but our new timer will call us
+      return FALSE;
+    }
+    // otherwise, our timer is already set up
+    // return TRUE to indicate that we want to be called again later
+    return TRUE;
+  }
+  service_manager->SetGetPropertiesSourceId(0);
+  service_manager->OnRetryingGetProperties(false);
+  return FALSE;  // we succeeded, so don't repeat
+}
+
+bool ServiceManager::GetFlimflamProperties() {
   DLOG(INFO) << "GetFlimflamProperties";
   PropertyMap properties;
   // dbus-c++ throws exceptions
@@ -165,12 +233,10 @@ void ServiceManager::GetFlimflamProperties() {
   } catch (DBus::Error& error) {  // NOLINT
     LOG(WARNING) << "GetFlimflamProperties: GetProperties() -> Exception: "
         << error.name() << ": " << error.message();
-    // TODO(vlaviano): schedule another attempt later
-    return;
+    return false;
   } catch (...) {  // NOLINT
     LOG(WARNING) << "GetFlimflamProperties: GetProperties() -> Exception";
-    // TODO(vlaviano): schedule another attempt later
-    return;
+    return false;
   }
   DLOG(INFO) << "GetFlimflamProperties: Received " << properties.size()
       << " properties";
@@ -201,6 +267,7 @@ void ServiceManager::GetFlimflamProperties() {
   } else {
     DLOG(WARNING) << "GetFlimflamProperties: no State property";
   }
+  return true;
 }
 
 void ServiceManager::OnDefaultTechnologyUpdate(

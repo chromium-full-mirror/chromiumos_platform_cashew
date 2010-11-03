@@ -113,6 +113,20 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // we've received an update from our parent that Flimflam has gone offline
     virtual void OnFlimflamOffline();
 
+    // glib integration interface
+
+    // get idle/timer source id
+    virtual guint GetGetPropertiesSourceId() const;
+
+    // set idle/timer source id
+    virtual void SetGetPropertiesSourceId(guint source_id);
+
+    // are we in the process of retrying our GetProperties call?
+    virtual bool RetryingGetProperties() const;
+
+    // set the retrying flag
+    virtual void OnRetryingGetProperties(bool retrying);
+
   private:
     // back pointer to our parent ServiceManager
     ServiceManager * const parent_;
@@ -156,6 +170,15 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // do we think that we're the default service?
     bool is_default_service_;
 
+    // GetProperties timer glib source id
+    // 0 means no source
+    guint get_properties_source_id_;
+
+    // are we in the process of retrying our GetProperties call?
+    // this flag exists to distinguish between our initial g_idle_add call
+    // and our subsequent timer calls
+    bool retrying_get_properties_;
+
     // convert state string to State enum value
     State StateFromString(const std::string& state) const;
 
@@ -171,8 +194,13 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // we've received updated Cellular.UsageUrl info from Flimflam
     void OnUsageUrlUpdate(const std::string& usage_url);
 
+    // glib integration: static wrapper for GetServiceProperties
+    // takes object ptr as data and invokes object->GetServiceProperties()
+    static gboolean StaticGetServicePropertiesCallback(gpointer data);
+
     // get service properties from Flimflam
-    void GetServiceProperties();
+    // returns true on success and false on failure
+    bool GetServiceProperties();
 
     // clear a DataPlanList and delete its data plan objects
     void DeleteDataPlans(DataPlanList *data_plans);
