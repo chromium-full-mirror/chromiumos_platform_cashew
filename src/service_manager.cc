@@ -377,7 +377,6 @@ void ServiceManager::OnDefaultServiceUpdate(const DBus::Path *path) {
 void ServiceManager::ClearDefaultCellularService() {
   DLOG(INFO) << "ClearDefaultCellularService";
   if (default_cellular_service_ != NULL) {
-    DCHECK(GetService(default_cellular_service_->GetPath()) != NULL);
     DCHECK(default_cellular_service_->IsDefaultService());
     default_cellular_service_->OnDefaultServiceUpdate(false);
     default_cellular_service_ = NULL;
