@@ -7,6 +7,8 @@
 
 #include "src/libcurl_http_fetcher.h"
 
+#include <config.h>
+
 #include <algorithm>
 
 #include <glog/logging.h>  // NOLINT
@@ -21,6 +23,7 @@ namespace cashew {
 
 namespace {
 const int kMaxRetriesCount = 20;
+const char *kCashewUserAgent = PACKAGE_STRING;
 }
 
 LibcurlHttpFetcher::~LibcurlHttpFetcher() {
@@ -74,6 +77,10 @@ void LibcurlHttpFetcher::ResumeTransfer(const std::string& url) {
 
   // Makes sure that peer certificate verification is enabled
   CHECK_EQ(curl_easy_setopt(curl_handle_, CURLOPT_SSL_VERIFYPEER, 1), CURLE_OK);
+
+  // set User-Agent header field since some servers require it to be present
+  CHECK_EQ(curl_easy_setopt(curl_handle_, CURLOPT_USERAGENT, kCashewUserAgent),
+           CURLE_OK);
 
   CHECK_EQ(curl_multi_add_handle(curl_multi_handle_, curl_handle_), CURLM_OK);
   transfer_in_progress_ = true;
