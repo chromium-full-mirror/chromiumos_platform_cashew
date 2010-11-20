@@ -48,7 +48,8 @@ DataPlan::DataPlan(const std::string& name, DataPlan::Type type,
                    Bytes data_bytes_used)
     : name_(name), type_(type), update_time_(update_time),
       start_time_(start_time), end_time_(end_time),
-      data_bytes_max_(data_bytes_max), data_bytes_used_(data_bytes_used) {
+      data_bytes_max_(data_bytes_max), data_bytes_used_(data_bytes_used),
+      local_bytes_used_(0) {
 }
 
 DataPlan::~DataPlan() {
@@ -82,6 +83,28 @@ Bytes DataPlan::GetDataBytesUsed() const {
   return data_bytes_used_;
 }
 
+Bytes DataPlan::GetLocalBytesUsed() const {
+  return local_bytes_used_;
+}
+
+void DataPlan::SetLocalBytesUsed(Bytes local_bytes_used) {
+  CHECK_GE(local_bytes_used, 0);
+  local_bytes_used_ = local_bytes_used;
+}
+
+bool DataPlan::IsActive() const {
+  // is the plan current?
+  base::Time now = base::Time::Now();
+  if (now < start_time_ || now >= end_time_) {
+    return false;
+  }
+  // is the plan exhausted?
+  if (type_ != kTypeUnlimited && data_bytes_used_ >= data_bytes_max_) {
+    return false;
+  }
+  return true;
+}
+
 DBusDataPlan DataPlan::ToDBusFormat() const {
   DBusDataPlan plan;
   // Indexing into map w/ nonexistent key causes empty DBus::Variant to be
@@ -100,11 +123,11 @@ DBusDataPlan DataPlan::ToDBusFormat() const {
   if (type_ != kTypeUnlimited) {
     plan[kCellularDataPlanDataBytesMax].writer().append_int64(data_bytes_max_);
   }
-  // always send used bytes field, even if we had to assume a value of 0
-  // because this is an unlimited plan and the property was absent in the
-  // usage API replies that we received
-  // TODO(vlaviano): we'll be able to do better when we have local counters
-  plan[kCellularDataPlanDataBytesUsed].writer().append_int64(data_bytes_used_);
+  // send our best estimate of data bytes used
+  // this is the baseline, if any, that we received from the carrier usage API
+  // plus any local traffic that we've measured since then
+  Bytes total_bytes_used = data_bytes_used_ + local_bytes_used_;
+  plan[kCellularDataPlanDataBytesUsed].writer().append_int64(total_bytes_used);
   return plan;
 }
 
@@ -266,6 +289,19 @@ bool DataPlan::TimeFromIso8601(const std::string& time_8601,
   // convert from time_t to base::Time
   *time_out = base::Time::FromTimeT(tt);
   return true;
+}
+
+// static
+DataPlan* DataPlan::GetActivePlan(const DataPlanList& data_plans) {
+  DataPlanList::const_iterator it;
+  for (it = data_plans.begin(); it != data_plans.end(); ++it) {
+    DataPlan *plan = *it;
+    DCHECK(plan != NULL);
+    if (plan->IsActive()) {
+      return plan;
+    }
+  }
+  return NULL;
 }
 
 // private methods

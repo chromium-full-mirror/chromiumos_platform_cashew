@@ -13,6 +13,8 @@
 noinst_LTLIBRARIES = libcashew.la
 
 libcashew_la_SOURCES = \
+  byte_counter.h \
+  byte_counter.cc \
   cashew_server.h \
   cashew_server.cc \
   data_plan.h \
@@ -30,6 +32,8 @@ libcashew_la_SOURCES = \
   libcurl_http_fetcher.cc \
   policy.h \
   policy.cc \
+  procfs_byte_counter.h \
+  procfs_byte_counter.cc \
   service.h \
   service.cc \
   service_manager.h \
@@ -87,7 +91,7 @@ COMMON_LIBS = \
   @GLIB_LIBS@ \
   @GLOG_LIBS@
 
-libcashew_la_CPPFLAGS = \
+libcashew_la_CXXFLAGS = \
   $(COMMON_CFLAGS)
 
 libcashew_la_LIBADD = \
@@ -104,7 +108,7 @@ sbin_PROGRAMS = cashewd
 cashewd_SOURCES = \
   main.cc
 
-cashewd_CPPFLAGS = \
+cashewd_CXXFLAGS = \
   $(COMMON_CFLAGS)
 
 cashewd_LDADD = \
@@ -122,12 +126,13 @@ cashew_unittest_SOURCES = \
   data_plan_unittest.cc \
   default_policy_unittest.cc \
   json_reader_unittest.cc \
+  procfs_byte_counter_unittest.cc \
   values_unittest.cc
 
 GTEST_CFLAGS =
 GTEST_LIBS = -lgtest
 
-cashew_unittest_CPPFLAGS = \
+cashew_unittest_CXXFLAGS = \
   $(COMMON_CFLAGS) \
   $(GTEST_CFLAGS)
 

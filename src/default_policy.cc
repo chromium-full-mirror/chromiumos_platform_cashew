@@ -10,7 +10,7 @@ namespace cashew {
 
 // default update timer interval in seconds
 static const guint kSecondsPerMinute = 60;
-static const guint kDefaultPolicyUpdateTimerIdleSecs = 10 * kSecondsPerMinute;
+static const guint kDefaultPolicyUpdateTimerIdleSecs = 1 * kSecondsPerMinute;
 
 DefaultPolicy::DefaultPolicy(const std::string& carrier) : carrier_(carrier) {
 }
@@ -26,13 +26,8 @@ guint DefaultPolicy::GetUpdateTimerIdleSecs(const DataPlanList& plans) const {
   return kDefaultPolicyUpdateTimerIdleSecs;
 }
 
-bool DefaultPolicy::ShouldEmitDataPlansUpdate(const DataPlanList& old_plans,
-    const DataPlanList& new_plans) const {
+bool DefaultPolicy::ShouldEmitDataPlansUpdate(const DataPlanList& plans) const {
   // unconditionally send an update
-  return true;
-}
-
-bool DefaultPolicy::UsageRequestsMustBeSentOTA() const {
   return true;
 }
 

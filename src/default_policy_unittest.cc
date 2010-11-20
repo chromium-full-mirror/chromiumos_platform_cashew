@@ -15,7 +15,6 @@ class DefaultPolicyTest: public ::testing::Test {
 
     virtual ~DefaultPolicyTest() {
       EXPECT_TRUE(policy_ == NULL);
-      EXPECT_TRUE(old_plans_.empty());
       EXPECT_TRUE(plans_.empty());
     }
 
@@ -33,26 +32,21 @@ class DefaultPolicyTest: public ::testing::Test {
     static const char *kTestCarrierName;
 
     DefaultPolicy *policy_;
-    DataPlanList old_plans_;
     DataPlanList plans_;
 };
 
 const char *DefaultPolicyTest::kTestCarrierName = "Test Carrier";
 
 TEST_F(DefaultPolicyTest, GetUpdateTimerIdleSecs) {
-  // we expect the default timer value to be 10 mins = 600 secs
+  // we expect the default timer value to be 1 min = 60 secs
   // unconditionally (i.e., independent of value of |plans_|) for now
-  EXPECT_EQ(600, policy_->GetUpdateTimerIdleSecs(plans_));
+  EXPECT_EQ(60, policy_->GetUpdateTimerIdleSecs(plans_));
 }
 
 TEST_F(DefaultPolicyTest, ShouldEmitDataPlansUpdate) {
   // we expect the result to be true unconditionally (i.e., independent of the
-  // values of |old_plans_| and |plans_|) for now
-  EXPECT_TRUE(policy_->ShouldEmitDataPlansUpdate(old_plans_, plans_));
-}
-
-TEST_F(DefaultPolicyTest, UsageRequestsMustBeSentOTA) {
-  EXPECT_TRUE(policy_->UsageRequestsMustBeSentOTA());
+  // value of |plans_|) for now
+  EXPECT_TRUE(policy_->ShouldEmitDataPlansUpdate(plans_));
 }
 
 TEST_F(DefaultPolicyTest, ZonelessTimeStringsAreLocal) {

@@ -16,7 +16,6 @@ namespace cashew {
 // a bare-bones default carrier policy
 class DefaultPolicy: public Policy {
   public:
-
     explicit DefaultPolicy(const std::string& carrier);
     virtual ~DefaultPolicy();
 
@@ -24,10 +23,7 @@ class DefaultPolicy: public Policy {
 
     virtual guint GetUpdateTimerIdleSecs(const DataPlanList& plans) const;
 
-    virtual bool ShouldEmitDataPlansUpdate(const DataPlanList& old_plans,
-        const DataPlanList& new_plans) const;
-
-    virtual bool UsageRequestsMustBeSentOTA() const;
+    virtual bool ShouldEmitDataPlansUpdate(const DataPlanList& plans) const;
 
     virtual bool ZonelessTimeStringsAreLocal() const;
 

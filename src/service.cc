@@ -17,10 +17,19 @@ namespace cashew {
 static const char *kFlimflamServiceName = "org.chromium.flimflam";
 
 // Flimflam Service property names
+static const char *kFlimflamServiceConnectivityStateProperty =
+    "ConnectivityState";
 static const char *kFlimflamServiceDeviceProperty = "Device";
 static const char *kFlimflamServiceStateProperty = "State";
 static const char *kFlimflamServiceTypeProperty = "Type";
 static const char *kFlimflamServiceUsageUrlProperty = "Cellular.UsageUrl";
+
+// Flimflam Service on-the-wire ConnectivityState values
+static const char *kFlimflamServiceConnectivityStateUnknown = "unknown";
+static const char *kFlimflamServiceConnectivityStateRestricted = "restricted";
+static const char *kFlimflamServiceConnectivityStateUnrestricted =
+    "unrestricted";
+static const char *kFlimflamServiceConnectivityStateNone = "none";
 
 // Flimflam Service on-the-wire State values
 static const char *kFlimflamServiceStateIdle = "idle";
@@ -73,7 +82,8 @@ Service::Service(ServiceManager * const parent,
       provider_(NULL), request_in_progress_(false),
       update_timeout_source_(NULL), policy_(NULL),
       is_default_service_(false), get_properties_source_id_(0),
-      retrying_get_properties_(false) {
+      retrying_get_properties_(false),
+      connectivity_state_(kConnectivityStateUnknown) {
   // schedule a GetProperties() call to our Flimflam service path to init state
   // we'll keep trying periodically until we succeed
   // we'll subsequently update this state by monitoring PropertyChanged signals
@@ -157,6 +167,10 @@ bool Service::IsDefaultService() const {
   return false;
 }
 
+Service::ConnectivityState Service::GetConnectivityState() const {
+  return connectivity_state_;
+}
+
 // Flimflam Service D-Bus Proxy methods
 
 void Service::PropertyChanged(const std::string& property_name,
@@ -170,6 +184,8 @@ void Service::PropertyChanged(const std::string& property_name,
     OnTypeUpdate(new_value.reader().get_string());
   } else if (property_name == kFlimflamServiceUsageUrlProperty) {
     OnUsageUrlUpdate(new_value.reader().get_string());
+  } else if (property_name == kFlimflamServiceConnectivityStateProperty) {
+    OnConnectivityStateUpdate(new_value.reader().get_string());
   } else {
     // we don't care about this property
   }
@@ -179,8 +195,8 @@ void Service::PropertyChanged(const std::string& property_name,
 
 void Service::OnCarrierUpdate(const std::string& carrier) {
   DLOG(INFO) << path_ << ": OnCarrierUpdate: carrier = " << carrier;
-  // NOTE: device_ can be NULL here because we may still be in Device ctor
-  DCHECK(device_ == NULL || carrier == device_->GetCarrier());
+  DCHECK(device_ != NULL);
+  DCHECK(carrier == device_->GetCarrier());
 
   // get rid of state associated with old carrier
   if (provider_ != NULL) {
@@ -189,7 +205,7 @@ void Service::OnCarrierUpdate(const std::string& carrier) {
   DeleteCarrierState();
 
   // if we don't have new carrier info, we can't do anything now
-  if (carrier == Device::kCarrierUnknown) {
+  if (carrier.empty()) {
     return;
   }
 
@@ -218,6 +234,37 @@ void Service::OnCarrierUpdate(const std::string& carrier) {
   } else {
     // we'll do this later in OnUsageUrlUpdate
   }
+}
+
+void Service::OnByteCounterUpdate(uint64 rx_bytes, uint64 tx_bytes) {
+  DCHECK(device_ != NULL);
+  DCHECK(device_->ByteCounterRunning());
+  DLOG(INFO) << path_ << ": OnByteCounterUpdate: rx_bytes = " << rx_bytes
+      << ", tx_bytes = " << tx_bytes;
+  DataPlan *active_plan = DataPlan::GetActivePlan(data_plans_);
+  if (active_plan == NULL) {
+    DLOG(WARNING) << path_ << ": OnByteCounterUpdate: no active plan";
+    return;
+  }
+  Bytes local_bytes_used = rx_bytes + tx_bytes;
+  DLOG(INFO) << path_ << ": OnByteCounterUpdate: local_bytes_used = "
+      << local_bytes_used;
+  // try to detect two error conditions:
+  // (1) overflow of the unsigned addition above prior to the assignment
+  // (2) no overflow, but result has high order bit set and so is interpreted as
+  //     a negative number when assigned to |local_bytes_used|
+  if (local_bytes_used < 0 ||
+      static_cast<uint64>(local_bytes_used) < rx_bytes ||
+      static_cast<uint64>(local_bytes_used) < tx_bytes) {
+    LOG(WARNING) << path_ << ": OnByteCounterUpdate: overflow detected";
+    return;
+  }
+  active_plan->SetLocalBytesUsed(local_bytes_used);
+  DLOG(INFO) << path_
+      << ": OnByteCounterUpdate: updated plan state: data bytes used = "
+      << active_plan->GetDataBytesUsed() << ", local byes used = "
+      << active_plan->GetLocalBytesUsed();
+  MaybeEmitDataPlansUpdate();
 }
 
 // DataPlanProviderDelegate methods
@@ -282,6 +329,9 @@ void Service::OnRequestComplete(const DataPlanProvider *provider,
   bool restricted = false;
   if (root->GetBoolean(kCrosUsageRestrictedProperty, &restricted)) {
     DLOG(INFO) << path_ << ": OnRequestComplete: restricted = " << restricted;
+    // TODO(vlaviano): this should probably be combined with flimflam's
+    // ConnectivityState property to arrive at a conclusion.
+
   } else {
     DLOG(INFO) << path_ << ": OnRequestComplete: no restricted property";
     // restricted property is optional
@@ -322,16 +372,29 @@ void Service::OnRequestComplete(const DataPlanProvider *provider,
   data_plans_ = new_plans;
   LOG(INFO) << path_ << ": OnRequestComplete: updated data plans";
 
-  // consult policy to determine if we should send an unsolicited update
-  if (policy_->ShouldEmitDataPlansUpdate(old_plans, new_plans)) {
-    DLOG(INFO) << path_ << ": OnRequestComplete: sending update";
-    parent_->EmitDataPlansUpdate(*this);
-  } else {
-    DLOG(INFO) << path_ << ": OnRequestComplete: not sending update";
-  }
+  MaybeEmitDataPlansUpdate();
 
   DLOG(INFO) << path_ << ": OnRequestComplete: deleting old data plans";
   DeleteDataPlans(&old_plans);
+
+  // start local byte counter so that we can stop hitting usage API
+  // we'll stop the counter when we disconnect
+  // we don't bother if carrier told us that there are no active data plans
+  DataPlan *active_plan = DataPlan::GetActivePlan(data_plans_);
+  if (active_plan == NULL) {
+    DLOG(INFO) << path_
+        << ": OnRequestComplete: no active plans, not starting byte counter";
+    return;
+  }
+  DCHECK(device_ != NULL);
+  DCHECK(!device_->ByteCounterRunning());
+  if (!device_->StartByteCounter()) {
+    LOG(WARNING) << path_
+        << ": OnRequestComplete: could not start byte counter";
+    // we'll keep the update timer running and try again later
+  }
+  DLOG(INFO) << path_ << ": OnRequestComplete: started byte counter";
+  ReconsiderSendingUsageRequests();
 }
 
 // Service Manager methods
@@ -382,7 +445,26 @@ void Service::OnRetryingGetProperties(bool retrying) {
 
 // Private methods
 
-Service::State Service::StateFromString(const std::string& state) const {
+// static
+Service::ConnectivityState Service::ConnectivityStateFromString(
+    const std::string& connectivity_state) {
+  if (connectivity_state == kFlimflamServiceConnectivityStateUnknown) {
+    return kConnectivityStateUnknown;
+  }
+  if (connectivity_state == kFlimflamServiceConnectivityStateRestricted) {
+    return kConnectivityStateRestricted;
+  }
+  if (connectivity_state == kFlimflamServiceConnectivityStateUnrestricted) {
+    return kConnectivityStateUnrestricted;
+  }
+  if (connectivity_state == kFlimflamServiceConnectivityStateNone) {
+    return kConnectivityStateNone;
+  }
+  return kConnectivityStateUnknown;
+}
+
+// static
+Service::State Service::StateFromString(const std::string& state) {
   if (state == kFlimflamServiceStateIdle) {
     return kStateIdle;
   }
@@ -436,6 +518,18 @@ void Service::OnDeviceUpdate(const DBus::Path& device_path) {
   }
   DLOG(INFO) << path_ << ": OnDeviceUpdate: created device for "
       << device_path;
+}
+
+void Service::OnConnectivityStateUpdate(const std::string& connectivity_state) {
+  DLOG(INFO) << path_ << ": OnConnectivityStateUpdate: connectivity_state = "
+      << connectivity_state;
+  Service::ConnectivityState new_connectivity_state =
+      ConnectivityStateFromString(connectivity_state);
+  if (connectivity_state_ == new_connectivity_state) {
+    return;
+  }
+  connectivity_state_ = new_connectivity_state;
+  ReconsiderSendingUsageRequests();
 }
 
 void Service::OnStateUpdate(const std::string& state) {
@@ -563,6 +657,16 @@ bool Service::GetServiceProperties() {
   } else {
     DLOG(WARNING) << path_
         << ": GetServiceProperties: no Cellular.UsageUrl property";
+  }
+  // flimflam docs re: ConnectivityState: "This state is currently only
+  // computed for services of type Cellular"
+  it = properties.find(kFlimflamServiceConnectivityStateProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    OnConnectivityStateUpdate(value.reader().get_string());
+  } else {
+    DLOG(WARNING) << path_
+        << ": GetServiceProperties: no ConnectivityState property";
   }
   return true;
 }
@@ -722,6 +826,11 @@ void Service::OnConnected() {
 void Service::OnDisconnected() {
   DLOG(INFO) << path_ << ": OnDisconnected";
   DCHECK(!IsConnected());
+  // stop byte counter
+  // we'll issue a new usage API request when we reconnect
+  if (device_ != NULL) {
+    device_->StopByteCounter();
+  }
   ReconsiderSendingUsageRequests();
 }
 
@@ -737,7 +846,8 @@ bool Service::ShouldSendUsageRequests() const {
     DCHECK(policy_ == NULL);
     return false;
   }
-  DCHECK(device_ == NULL || device_->GetCarrier() != Device::kCarrierUnknown);
+  DCHECK(device_ != NULL);
+  DCHECK(!device_->GetCarrier().empty());
   DCHECK(policy_ != NULL);
   if (usage_url_.empty()) {
     DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: no usage url";
@@ -749,17 +859,24 @@ bool Service::ShouldSendUsageRequests() const {
         << ": ShouldSendUsageRequests: no: flimflam is offline";
     return false;
   }
-  if (policy_->UsageRequestsMustBeSentOTA()) {
-    if (!IsConnected()) {
-      DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: "
-          << "ota-only policy and not connected";
-      return false;
-    }
-    if (!IsDefaultService()) {
-      DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: "
-          << "ota-only policy and not default service";
-      return false;
-    }
+  if (!IsConnected()) {
+    DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: not connected";
+    return false;
+  }
+  if (!IsDefaultService()) {
+    DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: not default service";
+    return false;
+  }
+  // TODO(vlaviano): this is a blunt way to ensure that we don't count local
+  // traffic if we're already in the restricted pool when cashew starts
+  if (GetConnectivityState() == kConnectivityStateRestricted) {
+    DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: in restricted pool";
+    return false;
+  }
+  if (device_->ByteCounterRunning()) {
+    DLOG(INFO) << path_
+        << ": ShouldSendUsageRequests: no: local byte counter is running";
+    return false;
   }
   DLOG(INFO) << path_ << ": ShouldSendUsageRequests: yes";
   return true;
@@ -784,6 +901,16 @@ void Service::ReconsiderSendingUsageRequests() {
     StartSendingUsageRequests();
   } else if (IsSendingUsageRequests() && !ShouldSendUsageRequests()) {
     StopSendingUsageRequests();
+  }
+}
+
+void Service::MaybeEmitDataPlansUpdate() {
+  DCHECK(policy_ != NULL);
+  if (policy_->ShouldEmitDataPlansUpdate(data_plans_)) {
+    DLOG(INFO) << path_ << ": MaybeEmitDataPlansUpdate: sending update";
+    parent_->EmitDataPlansUpdate(*this);
+  } else {
+    DLOG(INFO) << path_ << ": MaybeEmitDataPlansUpdate: not sending update";
   }
 }
 

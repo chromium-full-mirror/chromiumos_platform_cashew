@@ -6,28 +6,28 @@
 
 #include <glog/logging.h>
 
+#include "src/byte_counter.h"
 #include "src/service.h"
 
 namespace cashew {
 
-const char* Device::kCarrierUnknown = "Unknown";
-
 // Flimflam Device D-Bus identifiers
-static const char* kFlimflamDeviceName = "org.chromium.flimflam";
+static const char *kFlimflamDeviceName = "org.chromium.flimflam";
 
 // Flimflam Device property names
-static const char* kFlimflamDeviceCarrierProperty = "Cellular.Carrier";
-static const char* kFlimflamDeviceTypeProperty = "Type";
+static const char *kFlimflamDeviceCarrierProperty = "Cellular.Carrier";
+static const char *kFlimflamDeviceInterfaceProperty = "Interface";
+static const char *kFlimflamDeviceTypeProperty = "Type";
 
 // Flimflam Device on-the-wire Type values
-static const char* kFlimflamDeviceTypeEthernet = "ethernet";
-static const char* kFlimflamDeviceTypeWifi = "wifi";
-static const char* kFlimflamDeviceTypeWimax = "wimax";
-static const char* kFlimflamDeviceTypeBluetooth = "bluetooth";
-static const char* kFlimflamDeviceTypeGPS = "gps";
-static const char* kFlimflamDeviceTypeCellular = "cellular";
+static const char *kFlimflamDeviceTypeEthernet = "ethernet";
+static const char *kFlimflamDeviceTypeWifi = "wifi";
+static const char *kFlimflamDeviceTypeWimax = "wimax";
+static const char *kFlimflamDeviceTypeBluetooth = "bluetooth";
+static const char *kFlimflamDeviceTypeGPS = "gps";
+static const char *kFlimflamDeviceTypeCellular = "cellular";
 // TODO(vlaviano): what does vendor look like?
-static const char* kFlimflamDeviceTypeVendor = "";
+static const char *kFlimflamDeviceTypeVendor = "";
 
 // GetDeviceProperties retry interval
 static const guint kSecondsPerMinute = 60;
@@ -37,8 +37,8 @@ Device::Device(Service * const parent, DBus::Connection& connection,  // NOLINT
                const DBus::Path& path)
     : DBus::ObjectProxy(connection, path, kFlimflamDeviceName),
       parent_(CHECK_NOTNULL(parent)), path_(path), type_(kTypeUnknown),
-      carrier_(kCarrierUnknown), get_properties_source_id_(0),
-      retrying_get_properties_(false) {
+      get_properties_source_id_(0), retrying_get_properties_(false),
+      byte_counter_(NULL), byte_counter_running_(false) {
   // schedule a GetProperties() call to our Flimflam service path to init state
   // we'll keep trying periodically until we succeed
   // we'll subsequently update this state by monitoring PropertyChanged signals
@@ -50,6 +50,7 @@ Device::Device(Service * const parent, DBus::Connection& connection,  // NOLINT
 }
 
 Device::~Device() {
+  StopByteCounter();
   if (get_properties_source_id_ != 0 &&
       !g_source_remove(get_properties_source_id_)) {
     DLOG(WARNING) << path_ << ": dtor: g_source_remove failed";
@@ -68,6 +69,10 @@ const std::string& Device::GetCarrier() const {
   return carrier_;
 }
 
+const std::string& Device::GetInterface() const {
+  return interface_;
+}
+
 // Flimflam Device D-Bus Proxy methods
 
 void Device::PropertyChanged(const std::string& property_name,
@@ -75,11 +80,51 @@ void Device::PropertyChanged(const std::string& property_name,
   DLOG(INFO) << path_ << ": PropertyChanged: property_name = " << property_name;
   if (property_name == kFlimflamDeviceCarrierProperty) {
     OnCarrierUpdate(new_value.reader().get_string());
+  } else if (property_name == kFlimflamDeviceInterfaceProperty) {
+    OnInterfaceUpdate(new_value.reader().get_string());
   } else if (property_name == kFlimflamDeviceTypeProperty) {
     OnTypeUpdate(new_value.reader().get_string());
   } else {
     // we don't care about this property
   }
+}
+
+// Service methods
+
+bool Device::StartByteCounter() {
+  if (byte_counter_running_) {
+    DLOG(WARNING) << path_ << ": StartByteCounter: counter already running";
+    return false;
+  }
+  byte_counter_running_ = true;
+  if (interface_.empty()) {
+    // if we don't yet know our interface name, we report success but hold off
+    // creating a byte counter object; we'll do so later in OnInterfaceUpdate
+    DLOG(INFO) << path_
+        << ": StartByteCounter: no interface name, delaying counter creation";
+    return true;
+  }
+  if (!CreateByteCounter()) {
+    DLOG(WARNING) << path_
+      << ": StartByteCounter: couldn't create byte counter for " << interface_;
+    byte_counter_running_ = false;
+    return false;
+  }
+  DLOG(INFO) << path_ << ": StartByteCounter: created byte counter for "
+      << interface_;
+  return true;
+}
+
+void Device::StopByteCounter() {
+  if (byte_counter_running_) {
+    DeleteByteCounter();
+    byte_counter_running_ = false;
+  }
+  DCHECK(byte_counter_ == NULL);
+}
+
+bool Device::ByteCounterRunning() const {
+  return byte_counter_running_;
 }
 
 // glib integration interface
@@ -98,6 +143,18 @@ bool Device::RetryingGetProperties() const {
 
 void Device::OnRetryingGetProperties(bool retrying) {
   retrying_get_properties_ = retrying;
+}
+
+// ByteCounterDelegate methods
+
+void Device::OnByteCounterUpdate(const ByteCounter *counter, uint64 rx_bytes,
+                                 uint64 tx_bytes) {
+  DCHECK(byte_counter_running_);
+  DCHECK(byte_counter_ != NULL);
+  DCHECK(counter == byte_counter_);
+  DLOG(INFO) << path_ << ": OnByteCounterUpdate: rx_bytes = " << rx_bytes
+      << ", tx_bytes = " << tx_bytes;
+  parent_->OnByteCounterUpdate(rx_bytes, tx_bytes);
 }
 
 // Private methods
@@ -131,13 +188,45 @@ void Device::OnCarrierUpdate(const std::string& carrier) {
   DLOG(INFO) << path_ << ": OnCarrierUpdate: carrier = " << carrier;
   // only propagate this to parent Service if there's been a change
   // we expect to see only one such change (from "Unknown")
-  if (carrier_ != carrier) {
-    if (carrier_ != kCarrierUnknown) {
-      LOG(WARNING) << path_ << ": OnCarrierUpdate: carrier change from "
-          << carrier_ << " to " << carrier << "!";
-    }
-    carrier_ = carrier;
-    parent_->OnCarrierUpdate(carrier);
+  if (carrier_ == carrier) {
+    return;
+  }
+  if (!carrier_.empty()) {
+    LOG(WARNING) << path_ << ": OnCarrierUpdate: carrier change from "
+        << carrier_ << " to " << carrier << "!";
+  }
+  carrier_ = carrier;
+  parent_->OnCarrierUpdate(carrier);
+}
+
+void Device::OnInterfaceUpdate(const std::string& interface) {
+  DLOG(INFO) << path_ << ": OnInterfaceUpdate: interface = " << interface;
+  if (interface_ == interface) {
+    return;
+  }
+  if (!interface_.empty()) {
+    LOG(WARNING) << path_ << ": OnInterfaceUpdate: interface change from "
+        << interface_ << " to " << interface << "!";
+  }
+  const std::string old_interface = interface_;
+  interface_ = interface;
+  if (!byte_counter_running_) {
+    return;
+  }
+  // get rid of byte counter for old interface
+  StopByteCounter();
+  // if we don't have new interface info, we can't make a new byte counter yet
+  if (interface_.empty()) {
+    return;
+  }
+  // create byte counter for new interface
+  // TODO(vlaviano): creating new counter on interface change may confuse our
+  // parent service.
+  if (!StartByteCounter()) {
+    LOG(ERROR) << path_
+        << ": OnInterfaceUpdate: could not create byte counter for "
+        << interface_;
+    return;
   }
 }
 
@@ -208,6 +297,13 @@ bool Device::GetDeviceProperties() {
 
   // grab the properties in which we're interested
   PropertyMap::const_iterator it;
+  it = properties.find(kFlimflamDeviceInterfaceProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    OnInterfaceUpdate(value.reader().get_string());
+  } else {
+    DLOG(WARNING) << path_ << ": GetDeviceProperties: no Interface property";
+  }
   it = properties.find(kFlimflamDeviceTypeProperty);
   if (it != properties.end()) {
     const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
@@ -228,6 +324,34 @@ bool Device::GetDeviceProperties() {
         << ": GetDeviceProperties: no Cellular.Carrier property";
   }
   return true;
+}
+
+bool Device::CreateByteCounter() {
+  if (byte_counter_ != NULL) {
+    DLOG(WARNING) << path_ << ": CreateByteCounter: counter already exists";
+    return false;
+  }
+  if (interface_.empty()) {
+    DLOG(WARNING) << path_ << ": CreateByteCounter: interface name unknown";
+    return false;
+  }
+  byte_counter_ = ByteCounter::NewByteCounter(interface_);
+  if (byte_counter_ == NULL) {
+    LOG(ERROR) << path_
+        << ": CreateByteCounter: could not create byte counter for "
+        << interface_;
+    return false;
+  }
+  byte_counter_->SetDelegate(this);
+  return true;
+}
+
+void Device::DeleteByteCounter() {
+  DLOG(INFO) << path_ << ": DeleteByteCounter";
+  if (byte_counter_ != NULL) {
+    delete byte_counter_;
+    byte_counter_ = NULL;
+  }
 }
 
 }  // namespace cashew

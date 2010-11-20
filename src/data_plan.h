@@ -25,6 +25,7 @@ class Policy;
 typedef int64 Bytes;
 
 // List of DataPlan objects
+// TODO(vlaviano): consider promoting this from a typedef to a class
 typedef std::vector<DataPlan*> DataPlanList;
 
 // DataPlan object formatted for D-Bus (using DBus::Variants to wrap fields)
@@ -43,6 +44,7 @@ class DataPlan {
       kTypeMeteredPaid,
     } Type;
 
+    // |data_bytes_max| must be set to 0 for unlimited plans
     DataPlan(const std::string& name, DataPlan::Type type,
              base::Time update_time, base::Time start_time,
              base::Time end_time, Bytes data_bytes_max, Bytes data_bytes_used);
@@ -69,6 +71,17 @@ class DataPlan {
     // get plan used bytes
     virtual Bytes GetDataBytesUsed() const;
 
+    // get local used bytes
+    virtual Bytes GetLocalBytesUsed() const;
+
+    // set local used bytes
+    // must be >= 0
+    virtual void SetLocalBytesUsed(Bytes local_bytes_used);
+
+    // is this an active plan?
+    // we define active to mean that the plan is current and not exhausted
+    virtual bool IsActive() const;
+
     // return a{sv} representation for D-Bus
     virtual DBusDataPlan ToDBusFormat() const;
 
@@ -83,6 +96,10 @@ class DataPlan {
                                 base::Time *time_out,
                                 bool zoneless_strings_are_local);
 
+    // returns first active plan in |data_plans|
+    // returns NULL if list is empty or contains no active plans
+    static DataPlan* GetActivePlan(const DataPlanList& data_plans);
+
   private:
     // human-readable plan name
     const std::string name_;
@@ -91,6 +108,7 @@ class DataPlan {
     const Type type_;
 
     // last update time (i.e., how fresh is plan data)
+    // this refers to carrier API data, not local measurements
     base::Time update_time_;
 
     // plan start time
@@ -104,7 +122,12 @@ class DataPlan {
     const Bytes data_bytes_max_;
 
     // bytes consumed so far during plan period
+    // this measurement comes from the carrier API
     Bytes data_bytes_used_;
+
+    // local measurement of bytes used since we received |data_bytes_used_|
+    // baseline from the carrier API
+    Bytes local_bytes_used_;
 
     // convert plan type enum value to string formatted for libcros
     const char* TypeToLibcrosString(Type type) const;

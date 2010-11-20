@@ -8,6 +8,7 @@
 
 namespace cashew {
 
+// static
 Policy* Policy::GetPolicy(const std::string& carrier) {
   // for now, everyone gets the default policy
   return new(std::nothrow) DefaultPolicy(carrier);

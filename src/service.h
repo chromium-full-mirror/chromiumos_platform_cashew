@@ -83,6 +83,16 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // do we think that we're the default service at this time?
     virtual bool IsDefaultService() const;
 
+    typedef enum {
+      kConnectivityStateUnknown = 0,
+      kConnectivityStateRestricted,
+      kConnectivityStateUnrestricted,
+      kConnectivityStateNone,
+    } ConnectivityState;
+
+    // get connectivity state for this service
+    virtual ConnectivityState GetConnectivityState() const;
+
     // Flimflam Service D-Bus Proxy methods
 
     // receive incoming PropertyChanged D-Bus signal from Flimflam service
@@ -93,6 +103,9 @@ class Service : public org::chromium::flimflam::Service_proxy,
 
     // we've received updated Cellular.Carrier info from our child Device
     virtual void OnCarrierUpdate(const std::string& carrier);
+
+    // we've received updated byte counter info from our child Device
+    virtual void OnByteCounterUpdate(uint64 rx_bytes, uint64 tx_bytes);
 
     // DataPlanProviderDelegate methods
 
@@ -179,11 +192,22 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // and our subsequent timer calls
     bool retrying_get_properties_;
 
+    // Service connectivity state
+    // finer-grained connectivity info applicable when |state_| == kStateReady
+    ConnectivityState connectivity_state_;
+
+    // convert connectivity state string to ConnectivityState enum value
+    static ConnectivityState ConnectivityStateFromString(
+        const std::string& connectivity_state);
+
     // convert state string to State enum value
-    State StateFromString(const std::string& state) const;
+    static State StateFromString(const std::string& state);
 
     // we've received updated Device info from Flimflam
     void OnDeviceUpdate(const DBus::Path& device_path);
+
+    // we've received updated Connectivity State info from Flimflam
+    void OnConnectivityStateUpdate(const std::string& connectivity_state);
 
     // we've received updated State info from Flimflam
     void OnStateUpdate(const std::string& state);
@@ -269,6 +293,9 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // something has changed, so reevaluate whether or not we should be sending
     // periodic usage API requests and adjust our behavior if necessary
     void ReconsiderSendingUsageRequests();
+
+    // consult policy to determine if we should send an unsolicited update
+    void MaybeEmitDataPlansUpdate();
 
     DISALLOW_COPY_AND_ASSIGN(Service);
 };

@@ -12,16 +12,19 @@
 #include <base/basictypes.h>  // NOLINT
 #include <dbus-c++/dbus.h>  // NOLINT
 
+#include "src/byte_counter.h"
 #include "src/flimflam_device_client_glue.h"
 
 namespace cashew {
 
+class ByteCounter;
 class Service;
 
 // represents a cellular device and monitors Flimflam state for that device
 class Device : public org::chromium::flimflam::Device_proxy,
                public DBus::IntrospectableProxy,
-               public DBus::ObjectProxy {
+               public DBus::ObjectProxy,
+               public ByteCounterDelegate {
   public:
     Device(Service * const parent, DBus::Connection& connection,  // NOLINT
            const DBus::Path& path);
@@ -46,15 +49,33 @@ class Device : public org::chromium::flimflam::Device_proxy,
     // NOTE: for now, should always be kTypeCellular
     virtual Type GetType() const;
 
-    static const char *kCarrierUnknown;
-
     // get cellular carrier for this device
-    // returns kCarrierUnknown if we don't know
+    // returns empty string if we don't know
     virtual const std::string& GetCarrier() const;
 
+    // get interface name for this device (e.g., "usb0")
+    // returns empty string if we don't know
+    virtual const std::string& GetInterface() const;
+
     // Flimflam Device D-Bus Proxy methods
+
     virtual void PropertyChanged(const std::string& property_name,
                                  const DBus::Variant& new_value);
+
+    // Service methods
+
+    // start a new byte counter from 0
+    // there must not be an existing byte counter
+    // |parent_| will receive periodic updates via Service::OnByteCounterUpdate
+    // returns true on success and false on failure
+    virtual bool StartByteCounter();
+
+    // destroy any existing byte counter
+    // |parent_| will no longer receive updates after this call
+    virtual void StopByteCounter();
+
+    // is the byte counter running?
+    virtual bool ByteCounterRunning() const;
 
     // glib integration interface
 
@@ -70,6 +91,12 @@ class Device : public org::chromium::flimflam::Device_proxy,
     // set the retrying flag
     virtual void OnRetryingGetProperties(bool retrying);
 
+    // ByteCounterDelegate methods
+
+    // called when bye counter is updated
+    virtual void OnByteCounterUpdate(const ByteCounter *counter,
+                                     uint64 rx_bytes, uint64 tx_bytes);
+
   private:
     // back pointer to our parent Service
     Service * const parent_;
@@ -84,6 +111,9 @@ class Device : public org::chromium::flimflam::Device_proxy,
     // cellular carrier
     std::string carrier_;
 
+    // interface name
+    std::string interface_;
+
     // GetProperties timer glib source id
     // 0 means no source
     guint get_properties_source_id_;
@@ -93,11 +123,24 @@ class Device : public org::chromium::flimflam::Device_proxy,
     // and our subsequent timer calls
     bool retrying_get_properties_;
 
+    // byte counter for this device
+    // can be NULL
+    ByteCounter *byte_counter_;
+
+    // is the byte counter running?
+    // this is distinct from whether or not byte_counter_ == NULL, since the
+    // counter may be logically running but we may not yet know our interface
+    // name and therefore may not yet have created a byte counter object.
+    bool byte_counter_running_;
+
     // convert type string to Type enum value
     Type TypeFromString(const std::string& type) const;
 
     // we've received updated Cellular.Carrier info from Flimflam
     void OnCarrierUpdate(const std::string& carrier);
+
+    // we've received updated Interface info from Flimflam
+    void OnInterfaceUpdate(const std::string& interface);
 
     // we've received updated Type info from Flimflam
     void OnTypeUpdate(const std::string& type);
@@ -109,6 +152,12 @@ class Device : public org::chromium::flimflam::Device_proxy,
     // get device properties from Flimflam
     // returns true on success and false on failure
     bool GetDeviceProperties();
+
+    // create a byte counter object and assign it to |byte_counter_|
+    bool CreateByteCounter();
+
+    // delete byte counter object pointed to by |byte_counter_| if any
+    void DeleteByteCounter();
 
     DISALLOW_COPY_AND_ASSIGN(Device);
 };

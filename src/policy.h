@@ -28,11 +28,7 @@ class Policy {
     // should we emit a data plans update for the change from |old_plans|
     // to |new_plans|?
     // NOTE: user might also want to influence this from the Chrome side
-    virtual bool ShouldEmitDataPlansUpdate(const DataPlanList& old_plans,
-        const DataPlanList& new_plans) const = 0;
-
-    // must usage API requests for a cellular service be sent over the air?
-    virtual bool UsageRequestsMustBeSentOTA() const = 0;
+    virtual bool ShouldEmitDataPlansUpdate(const DataPlanList& plans) const = 0;
 
     // should time strings with no timezone suffix be interpreted as being in
     // local time instead of UTC?
