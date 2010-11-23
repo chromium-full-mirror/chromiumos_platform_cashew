@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// TODO(vlaviano): update accessor style (GetFoo/SetFoo -> foo)
+
 #ifndef SRC_SERVICE_H_
 #define SRC_SERVICE_H_
 
@@ -78,6 +80,7 @@ class Service : public org::chromium::flimflam::Service_proxy,
     virtual Device* GetDevice() const;
 
     // get data plan info, formatted for D-Bus
+    // filters out inactive (future, expired, or consumed) plans
     virtual DBusDataPlanList GetDBusDataPlans() const;
 
     // do we think that we're the default service at this time?

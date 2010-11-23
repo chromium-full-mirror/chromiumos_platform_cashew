@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// TODO(vlaviano): update accessor style (GetFoo/SetFoo -> foo)
+
 #ifndef SRC_DATA_PLAN_H_
 #define SRC_DATA_PLAN_H_
 
@@ -78,6 +80,9 @@ class DataPlan {
     // must be >= 0
     virtual void SetLocalBytesUsed(Bytes local_bytes_used);
 
+    // get total used bytes
+    virtual Bytes GetTotalBytesUsed() const;
+
     // is this an active plan?
     // we define active to mean that the plan is current and not exhausted
     virtual bool IsActive() const;
@@ -128,6 +133,11 @@ class DataPlan {
     // local measurement of bytes used since we received |data_bytes_used_|
     // baseline from the carrier API
     Bytes local_bytes_used_;
+
+    // our best estimate of total bytes used for this plan
+    // carrier baseline (|data_bytes_used_|) +
+    // locally measured traffic (|local_bytes_used_|)
+    Bytes total_bytes_used_;
 
     // convert plan type enum value to string formatted for libcros
     const char* TypeToLibcrosString(Type type) const;

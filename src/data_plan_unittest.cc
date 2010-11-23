@@ -14,19 +14,47 @@ namespace cashew {
 // test fixture for DataPlan unit tests
 class DataPlanTest: public ::testing::Test {
   protected:
-    DataPlanTest() : policy_(NULL) {}
+    DataPlanTest() : policy_(NULL), current_unlimited_plan_(NULL),
+        current_available_metered_plan_(NULL) {}
 
     virtual ~DataPlanTest() {
       EXPECT_TRUE(policy_ == NULL);
+      EXPECT_TRUE(current_unlimited_plan_ == NULL);
+      EXPECT_TRUE(current_available_metered_plan_ == NULL);
     }
 
     virtual void SetUp() {
       EXPECT_TRUE(policy_ == NULL);
       policy_ = Policy::GetPolicy(kTestCarrierName);
       ASSERT_TRUE(policy_ != NULL);
+
+      EXPECT_TRUE(current_unlimited_plan_ == NULL);
+      DataPlan::Type type = DataPlan::kTypeUnlimited;
+      base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+      base::Time now = base::Time::Now();
+      base::Time start_time = now - twelve_hours;
+      base::Time end_time = now + twelve_hours;
+      Bytes max_bytes = 0;
+      Bytes used_bytes = 5 * 1024 * 1024;
+      current_unlimited_plan_ = new(std::nothrow) DataPlan(
+          "Current Unlimited Plan", type, now, start_time, end_time, max_bytes,
+          used_bytes);
+      ASSERT_TRUE(current_unlimited_plan_ != NULL);
+
+      EXPECT_TRUE(current_available_metered_plan_ == NULL);
+      type = DataPlan::kTypeMeteredFree;
+      max_bytes = 100 * 1024 * 1024;
+      current_available_metered_plan_ = new(std::nothrow) DataPlan(
+          "Current Available Metered Plan", type, now, start_time, end_time,
+          max_bytes, used_bytes);
+      ASSERT_TRUE(current_available_metered_plan_ != NULL);
     }
 
     virtual void TearDown() {
+      delete current_available_metered_plan_;
+      current_available_metered_plan_ = NULL;
+      delete current_unlimited_plan_;
+      current_unlimited_plan_ = NULL;
       delete policy_;
       policy_ = NULL;
     }
@@ -42,7 +70,14 @@ class DataPlanTest: public ::testing::Test {
     // test carrier for constructing policy
     static const char *kTestCarrierName;
 
+    // test policy used by FromDictionaryValue tests
     Policy *policy_;
+
+    // current unlimited plan shared by multiple tests
+    DataPlan *current_unlimited_plan_;
+
+    // current available metered plan shared by multiple tests
+    DataPlan *current_available_metered_plan_;
 };
 
 typedef DataPlanTest DataPlanDeathTest;
@@ -244,6 +279,164 @@ TEST_F(DataPlanTest, FromDictionaryValue32BitUnsignedOverflowingMaxBytes) {
   // we expect the call to have succeeded and max bytes to be set properly
   ASSERT_TRUE(plan != NULL);
   EXPECT_EQ(5000000000LL, plan->GetDataBytesMax());
+}
+
+TEST_F(DataPlanTest, TotalBytesAfterCtor) {
+  // this test uses |current_unlimited_plan_| created in fixture SetUp
+  // we expect plan to be initialized with local bytes == 0 and total bytes ==
+  // |used_bytes|
+  EXPECT_EQ(5 * 1024 * 1024, current_unlimited_plan_->GetDataBytesUsed());
+  EXPECT_EQ(0, current_unlimited_plan_->GetLocalBytesUsed());
+  EXPECT_EQ(5 * 1024 * 1024, current_unlimited_plan_->GetTotalBytesUsed());
+}
+
+TEST_F(DataPlanTest, TotalBytesAfterSetLocalBytes) {
+  // this test uses |current_unlimited_plan_| created in fixture SetUp
+  Bytes local_bytes = 10 * 1024 * 1024;
+  current_unlimited_plan_->SetLocalBytesUsed(local_bytes);
+  // we expect that, after we set local bytes, total bytes == data bytes +
+  // local bytes
+  EXPECT_EQ(5 * 1024 * 1024, current_unlimited_plan_->GetDataBytesUsed());
+  EXPECT_EQ(local_bytes, current_unlimited_plan_->GetLocalBytesUsed());
+  EXPECT_EQ(15 * 1024 * 1024, current_unlimited_plan_->GetTotalBytesUsed());
+}
+
+TEST_F(DataPlanTest, TotalBytesAfterOverflow) {
+  // this test uses |current_unlimited_plan_| created in fixture SetUp
+  Bytes local_bytes = kint64max;
+  current_unlimited_plan_->SetLocalBytesUsed(local_bytes);
+  // we expect that, after we set local bytes to a value that will cause the
+  // total bytes computation to overflow, the overflow will be detected and
+  // total bytes will be set to kint64max.
+  EXPECT_EQ(5 * 1024 * 1024, current_unlimited_plan_->GetDataBytesUsed());
+  EXPECT_EQ(local_bytes, current_unlimited_plan_->GetLocalBytesUsed());
+  EXPECT_EQ(kint64max, current_unlimited_plan_->GetTotalBytesUsed());
+}
+
+TEST_F(DataPlanTest, IsActiveCurrentPlan) {
+  std::string name = "Current Plan";
+  DataPlan::Type type = DataPlan::kTypeMeteredFree;
+  base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+  base::Time now = base::Time::Now();
+  base::Time start_time = now - twelve_hours;
+  base::Time end_time = now + twelve_hours;
+  Bytes max_bytes = 100 * 1024 * 1024;
+  Bytes used_bytes = 5 * 1024 * 1024;
+  DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
+                                              end_time, max_bytes, used_bytes);
+  ASSERT_TRUE(plan != NULL);
+  // we expect that a current plan will be considered active
+  EXPECT_TRUE(plan->IsActive());
+  delete plan;
+}
+
+TEST_F(DataPlanTest, IsActiveFuturePlan) {
+  std::string name = "Future Plan";
+  DataPlan::Type type = DataPlan::kTypeMeteredFree;
+  base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+  base::Time now = base::Time::Now();
+  base::Time start_time = now + twelve_hours;
+  base::Time end_time = now + twelve_hours + twelve_hours;
+  Bytes max_bytes = 100 * 1024 * 1024;
+  Bytes used_bytes = 5 * 1024 * 1024;
+  DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
+                                              end_time, max_bytes, used_bytes);
+  ASSERT_TRUE(plan != NULL);
+  // we expect that a future plan will not be considered active
+  EXPECT_FALSE(plan->IsActive());
+  delete plan;
+}
+
+TEST_F(DataPlanTest, IsActiveExpiredPlan) {
+  std::string name = "Expired Plan";
+  DataPlan::Type type = DataPlan::kTypeMeteredFree;
+  base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+  base::Time now = base::Time::Now();
+  base::Time start_time = now - twelve_hours - twelve_hours;
+  base::Time end_time = now - twelve_hours;
+  Bytes max_bytes = 100 * 1024 * 1024;
+  Bytes used_bytes = 5 * 1024 * 1024;
+  DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
+                                              end_time, max_bytes, used_bytes);
+  ASSERT_TRUE(plan != NULL);
+  // we expect that an expired plan will not be considered active
+  EXPECT_FALSE(plan->IsActive());
+  delete plan;
+}
+
+TEST_F(DataPlanTest, IsActiveJustStartedPlan) {
+  std::string name = "Just Started Plan";
+  DataPlan::Type type = DataPlan::kTypeMeteredFree;
+  base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+  base::Time now = base::Time::Now();
+  base::Time start_time = now;
+  base::Time end_time = now + twelve_hours;
+  Bytes max_bytes = 100 * 1024 * 1024;
+  Bytes used_bytes = 5 * 1024 * 1024;
+  DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
+                                              end_time, max_bytes, used_bytes);
+  ASSERT_TRUE(plan != NULL);
+  // we expect that a plan with start time == now will be considered active
+  EXPECT_TRUE(plan->IsActive());
+  delete plan;
+}
+
+TEST_F(DataPlanTest, IsActiveJustExpiredPlan) {
+  std::string name = "Just Expired Plan";
+  DataPlan::Type type = DataPlan::kTypeMeteredFree;
+  base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+  base::Time now = base::Time::Now();
+  base::Time start_time = now - twelve_hours;
+  base::Time end_time = now;
+  Bytes max_bytes = 100 * 1024 * 1024;
+  Bytes used_bytes = 5 * 1024 * 1024;
+  DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
+                                              end_time, max_bytes, used_bytes);
+  ASSERT_TRUE(plan != NULL);
+  // we expect that a plan with end time == now will not be considered active
+  EXPECT_FALSE(plan->IsActive());
+  delete plan;
+}
+
+TEST_F(DataPlanTest, IsActiveAvailableMeteredPlan) {
+  // this test uses |current_available_metered_plan_| created in fixture SetUp
+  // we expect that a current metered plan that is not yet consumed will be
+  // considered active
+  EXPECT_TRUE(current_available_metered_plan_->IsActive());
+}
+
+TEST_F(DataPlanTest, IsActiveConsumedMeteredPlan) {
+  std::string name = "Consumed Metered Plan";
+  DataPlan::Type type = DataPlan::kTypeMeteredFree;
+  base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+  base::Time now = base::Time::Now();
+  base::Time start_time = now - twelve_hours;
+  base::Time end_time = now + twelve_hours;
+  Bytes max_bytes = 100 * 1024 * 1024;
+  Bytes used_bytes = 100 * 1024 * 1024;
+  DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
+                                              end_time, max_bytes, used_bytes);
+  ASSERT_TRUE(plan != NULL);
+  // we expect that a current metered plan that is consumed will not be
+  // considered active
+  EXPECT_FALSE(plan->IsActive());
+  delete plan;
+}
+
+TEST_F(DataPlanTest, IsActiveConsumedLocalMeteredPlan) {
+  // this test uses |current_available_metered_plan_| created in fixture SetUp
+  current_available_metered_plan_->SetLocalBytesUsed(95 * 1024 * 1024);
+  // we expect that a current metered plan that has used bytes < max bytes but
+  // is consumed by virtue of local bytes + used bytes being >= max bytes will
+  // not be considered active
+  EXPECT_FALSE(current_available_metered_plan_->IsActive());
+}
+
+TEST_F(DataPlanTest, IsActiveUnlimitedPlan) {
+  // this test uses |current_unlimited_plan_| created in fixture SetUp
+  // we expect that a current unlimited plan will be considered active, even if
+  // its total bytes is greater than its (meaningless) max bytes
+  EXPECT_TRUE(current_unlimited_plan_->IsActive());
 }
 
 }  // namespace cashew

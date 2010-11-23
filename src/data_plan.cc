@@ -49,7 +49,9 @@ DataPlan::DataPlan(const std::string& name, DataPlan::Type type,
     : name_(name), type_(type), update_time_(update_time),
       start_time_(start_time), end_time_(end_time),
       data_bytes_max_(data_bytes_max), data_bytes_used_(data_bytes_used),
-      local_bytes_used_(0) {
+      local_bytes_used_(0), total_bytes_used_(data_bytes_used) {
+      CHECK_GE(data_bytes_max_, 0);
+      CHECK_GE(data_bytes_used_, 0);
 }
 
 DataPlan::~DataPlan() {
@@ -87,9 +89,18 @@ Bytes DataPlan::GetLocalBytesUsed() const {
   return local_bytes_used_;
 }
 
+Bytes DataPlan::GetTotalBytesUsed() const {
+  return total_bytes_used_;
+}
+
 void DataPlan::SetLocalBytesUsed(Bytes local_bytes_used) {
   CHECK_GE(local_bytes_used, 0);
   local_bytes_used_ = local_bytes_used;
+  total_bytes_used_ = data_bytes_used_ + local_bytes_used_;
+  if (total_bytes_used_ < 0) {
+    LOG(WARNING) << "SetLocalBytesUsed: overflow detected";
+    total_bytes_used_ = kint64max;
+  }
 }
 
 bool DataPlan::IsActive() const {
@@ -99,7 +110,7 @@ bool DataPlan::IsActive() const {
     return false;
   }
   // is the plan exhausted?
-  if (type_ != kTypeUnlimited && data_bytes_used_ >= data_bytes_max_) {
+  if (type_ != kTypeUnlimited && total_bytes_used_ >= data_bytes_max_) {
     return false;
   }
   return true;
@@ -126,8 +137,7 @@ DBusDataPlan DataPlan::ToDBusFormat() const {
   // send our best estimate of data bytes used
   // this is the baseline, if any, that we received from the carrier usage API
   // plus any local traffic that we've measured since then
-  Bytes total_bytes_used = data_bytes_used_ + local_bytes_used_;
-  plan[kCellularDataPlanDataBytesUsed].writer().append_int64(total_bytes_used);
+  plan[kCellularDataPlanDataBytesUsed].writer().append_int64(total_bytes_used_);
   return plan;
 }
 

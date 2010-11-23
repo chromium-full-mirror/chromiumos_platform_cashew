@@ -150,7 +150,13 @@ DBusDataPlanList Service::GetDBusDataPlans() const {
   for (it = data_plans_.begin(); it != data_plans_.end(); ++it) {
     DataPlan *plan = *it;
     DCHECK(plan != NULL);
-    dbus_data_plans.push_back(plan->ToDBusFormat());
+    // filter out inactive plans
+    if (plan->IsActive()) {
+      dbus_data_plans.push_back(plan->ToDBusFormat());
+    } else {
+      DLOG(INFO) << path_ << ": GetBusDataPlans: skipping inactive plan: \""
+          << plan->GetName() << "\"";
+    }
   }
   return dbus_data_plans;
 }
@@ -262,8 +268,9 @@ void Service::OnByteCounterUpdate(uint64 rx_bytes, uint64 tx_bytes) {
   active_plan->SetLocalBytesUsed(local_bytes_used);
   DLOG(INFO) << path_
       << ": OnByteCounterUpdate: updated plan state: data bytes used = "
-      << active_plan->GetDataBytesUsed() << ", local byes used = "
-      << active_plan->GetLocalBytesUsed();
+      << active_plan->GetDataBytesUsed() << ", local bytes used = "
+      << active_plan->GetLocalBytesUsed() << ", total bytes used = "
+      << active_plan->GetTotalBytesUsed();
   MaybeEmitDataPlansUpdate();
 }
 
