@@ -33,14 +33,16 @@ static const guint kSecondsPerMinute = 60;
 static const guint kGetFlimflamPropertiesIntervalSeconds =
     1 * kSecondsPerMinute;
 
-ServiceManager::ServiceManager(DBus::Connection& connection)  // NOLINT
+ServiceManager::ServiceManager(DBus::Connection& connection,  // NOLINT
+                               GMainLoop * const main_loop)
     : DBus::ObjectProxy(connection, kFlimflamManagerPath,
                         kFlimflamManagerName),
-      connection_(connection), cashew_server_(NULL),
-      default_technology_(Service::kTypeUnknown),
+      connection_(connection), main_loop_(CHECK_NOTNULL(main_loop)),
+      cashew_server_(NULL), default_technology_(Service::kTypeUnknown),
       default_cellular_service_(NULL),
       connectivity_state_(kConnectivityStateUnknown),
-      get_properties_source_id_(0), retrying_get_properties_(false) {
+      get_properties_source_id_(0), retrying_get_properties_(false),
+      deferred_service_deletion_source_id_(0) {
   // schedule a GetProperties() call to Flimflam to init our state
   // we'll keep trying periodically until we succeed
   // we'll subsequently update this state by monitoring PropertyChanged signals
@@ -52,11 +54,21 @@ ServiceManager::ServiceManager(DBus::Connection& connection)  // NOLINT
 }
 
 ServiceManager::~ServiceManager() {
+  DCHECK(!g_main_loop_is_running(main_loop_));
   ClearDefaultCellularService();
-  DeleteServices(&services_);
+  // we're not in the main loop, so we can delete services immediately
+  bool defer = false;
+  DeleteServices(&services_, defer);
+  DeletePendingServices();
   if (get_properties_source_id_ != 0 &&
       !g_source_remove(get_properties_source_id_)) {
-    DLOG(WARNING) << "dtor: g_source_remove failed";
+    DLOG(WARNING) << "dtor: g_source_remove failed for source id "
+        << get_properties_source_id_;
+  }
+  if (deferred_service_deletion_source_id_ != 0 &&
+      !g_source_remove(deferred_service_deletion_source_id_)) {
+    DLOG(WARNING) << "dtor: g_source_remove failed for source id "
+        << deferred_service_deletion_source_id_;
   }
 }
 
@@ -169,21 +181,77 @@ void ServiceManager::OnRetryingGetProperties(bool retrying) {
   retrying_get_properties_ = retrying;
 }
 
+guint ServiceManager::GetDeferredServiceDeletionSourceId() const {
+  return deferred_service_deletion_source_id_;
+}
+
+void ServiceManager::SetDeferredServiceDeletionSourceId(guint source_id) {
+  deferred_service_deletion_source_id_ = source_id;
+}
+
 // Private methods
 
-void ServiceManager::DeleteServices(ServiceMap *service_map) {
+void ServiceManager::DeleteServices(ServiceMap *service_map, bool defer) {
+  DLOG(INFO) << "DeleteServices: defer = " << defer;
   DCHECK(service_map != NULL);
   while (!service_map->empty()) {
-    const std::string& path =
-        static_cast<std::string>(service_map->begin()->first);
-    DLOG(INFO) << "DeleteServices: deleting service: " << path;
     Service *service = static_cast<Service *>(service_map->begin()->second);
     DCHECK(service != NULL);
     DCHECK(service != default_cellular_service_);
     DCHECK(*service_map == services_ || GetService(service->GetPath()) == NULL);
-    delete service;
+    if (defer) {
+      DLOG(INFO) << "DeleteServices: scheduling service for later deletion: "
+          << service->GetPath();
+      ScheduleServiceForLaterDeletion(service);
+    } else {
+      DLOG(INFO) << "DeleteServices: deleting service: " << service->GetPath();
+      delete service;
+    }
     service_map->erase(service_map->begin());
   }
+}
+
+void ServiceManager::DeletePendingServices() {
+  while (!services_pending_deletion_.empty()) {
+    Service *service = *(services_pending_deletion_.begin());
+    DCHECK(service != NULL);
+    DLOG(INFO) << "DeletePendingServices: deleting service: "
+        << service->GetPath();
+    DCHECK(service != default_cellular_service_);
+    delete service;
+    services_pending_deletion_.erase(services_pending_deletion_.begin());
+  }
+}
+
+void ServiceManager::ScheduleServiceForLaterDeletion(Service *service) {
+    DCHECK(service != NULL);
+    DCHECK(service != default_cellular_service_);
+    // we might be inside of a D-Bus callback.
+    // add the service to our |services_pending_deletion_| list, and schedule a
+    // glib callback to delete these services later from the main loop if such
+    // a callback is not already scheduled
+    services_pending_deletion_.push_back(service);
+    if (deferred_service_deletion_source_id_ != 0) {
+      return;
+    }
+    deferred_service_deletion_source_id_ =
+        g_idle_add(StaticDeletePendingServicesCallback, this);
+    if (deferred_service_deletion_source_id_ == 0) {
+      LOG(ERROR) << "ScheduleServiceForLaterDeletion: g_idle_add failed";
+      return;
+    }
+}
+
+// static
+gboolean ServiceManager::StaticDeletePendingServicesCallback(gpointer data) {
+  ServiceManager *service_manager = reinterpret_cast<ServiceManager*>(data);
+  DCHECK(service_manager != NULL);
+  DCHECK_NE(service_manager->GetDeferredServiceDeletionSourceId(), 0);
+  service_manager->DeletePendingServices();
+  // we don't want to be run again automatically
+  // DeleteServiceOrScheduleForLaterDeletion will schedule us as needed
+  service_manager->SetDeferredServiceDeletionSourceId(0);
+  return FALSE;
 }
 
 // static
@@ -319,6 +387,9 @@ void ServiceManager::OnServicesUpdate(const ServicePathList& paths) {
       services_[path] = service;
     } else {
       // service is new: create a Service obj for it and add it to services_
+      // TODO(vlaviano): If a service went away and came back immediately, there
+      // might still be a corresponding service object pending deletion. We
+      // could rescue it rather than allocating a new object here.
       OnNewService(path);
     }
   }
@@ -334,7 +405,11 @@ void ServiceManager::OnServicesUpdate(const ServicePathList& paths) {
   }
 
   // services left in old_services failed to appear in the update: delete them
-  DeleteServices(&old_services);
+  // NOTE: We're in a D-Bus callback so we can't delete these services
+  // immediately without triggering a potential deadlock. We schedule them for
+  // deferred deletion.
+  bool defer = true;
+  DeleteServices(&old_services, defer);
 
   // Flimflam always places the default service first in its list of services,
   // so we'll take a look at the first element in the paths list and see if the

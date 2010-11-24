@@ -5,6 +5,8 @@
 #ifndef SRC_CASHEW_SERVER_H_
 #define SRC_CASHEW_SERVER_H_
 
+#include <glib.h>
+
 #include <map>
 #include <string>
 #include <vector>
@@ -26,7 +28,8 @@ class CashewServer : public org::chromium::Cashew_adaptor,
                      public DBus::ObjectAdaptor {
   public:
     CashewServer(DBus::Connection& connection,  // NOLINT
-                 ServiceManager * const service_manager);
+                 ServiceManager * const service_manager,
+                 GMainLoop * const main_loop);
     virtual ~CashewServer();
 
     // Cashew D-Bus API methods
@@ -52,6 +55,9 @@ class CashewServer : public org::chromium::Cashew_adaptor,
 
   private:
     ServiceManager * const service_manager_;
+
+    // glib main loop
+    GMainLoop * const main_loop_;
 
     // Emit a DataPlansUpdate D-Bus signal for a service
     void EmitDataPlansUpdateSignal(const Service& service);
