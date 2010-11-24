@@ -11,7 +11,6 @@
 
 #include <map>
 #include <string>
-#include <vector>
 
 #include <base/basictypes.h>  // NOLINT
 #include <dbus-c++/dbus.h>    // NOLINT
@@ -28,9 +27,6 @@ class ServiceManager;
 
 // map of key, value pairs representing service properties received via D-Bus
 typedef std::map<std::string, DBus::Variant> PropertyMap;
-
-// vector of Device objects
-typedef std::vector<Device*> DeviceList;
 
 // represents a cellular service and monitors Flimflam state for that service
 class Service : public org::chromium::flimflam::Service_proxy,
@@ -147,12 +143,6 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // set the retrying flag
     virtual void OnRetryingGetProperties(bool retrying);
 
-    // get deferred device deletion source id
-    virtual guint GetDeferredDeviceDeletionSourceId() const;
-
-    // set deferred device deletion source id
-    virtual void SetDeferredDeviceDeletionSourceId(guint source_id);
-
   private:
     // back pointer to our parent ServiceManager
     ServiceManager * const parent_;
@@ -208,24 +198,6 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // Service connectivity state
     // finer-grained connectivity info applicable when |state_| == kStateReady
     ConnectivityState connectivity_state_;
-
-    // Device objects pending deletion from the main loop
-    // We need to do this to work around a dbus-c++ deadlock issue that arises
-    // when we send a D-Bus message from a D-Bus callback
-    DeviceList devices_pending_deletion_;
-
-    // glib source id for deferred device deletion
-    guint deferred_device_deletion_source_id_;
-
-    // deletes members of |devices_pending_deletion_| immediately
-    void DeletePendingDevices();
-
-    // schedule a device for later deletion from the main loop
-    void ScheduleDeviceForLaterDeletion(Device *device);
-
-    // glib integration: static wrapper for DeletePendingDevices
-    // takes object ptr as data and invokes object->DeletePendingDevices()
-    static gboolean StaticDeletePendingDevicesCallback(gpointer data);
 
     // convert connectivity state string to ConnectivityState enum value
     static ConnectivityState ConnectivityStateFromString(

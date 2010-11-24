@@ -5,8 +5,6 @@
 #ifndef SRC_SERVICE_MANAGER_H_
 #define SRC_SERVICE_MANAGER_H_
 
-#include <glib.h>
-
 #include <map>
 #include <string>
 #include <vector>
@@ -24,9 +22,6 @@ class CashewServer;
 // map of service path names to Service objects
 typedef std::map<std::string, Service*> ServiceMap;
 
-// vector of Service objects
-typedef std::vector<Service*> ServiceList;
-
 // vector of DBus::Path objects (strings) representing service path names
 typedef std::vector<DBus::Path> ServicePathList;
 
@@ -35,8 +30,7 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
                        public DBus::IntrospectableProxy,
                        public DBus::ObjectProxy {
   public:
-    explicit ServiceManager(DBus::Connection& connection,  // NOLINT
-                            GMainLoop * const main_loop);
+    explicit ServiceManager(DBus::Connection& connection);  // NOLINT
     virtual ~ServiceManager();
 
     // look up a service by its path name
@@ -98,19 +92,10 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
     // set the retrying flag
     virtual void OnRetryingGetProperties(bool retrying);
 
-    // get deferred service deletion source id
-    virtual guint GetDeferredServiceDeletionSourceId() const;
-
-    // set deferred service deletion source id
-    virtual void SetDeferredServiceDeletionSourceId(guint source_id);
-
   private:
     // D-Bus connection owned by our creator
     // shared with Service objs that we create
     DBus::Connection& connection_;
-
-    // glib main loop
-    GMainLoop * const main_loop_;
 
     // collection of Service objs representing cellular services
     ServiceMap services_;
@@ -138,29 +123,8 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
     // and our subsequent timer calls
     bool retrying_get_properties_;
 
-    // Service objects pending deletion from the main loop
-    // we need to do this to work around a dbus-c++ deadlock issue that arises
-    // when we send a D-Bus message from a D-Bus callback
-    ServiceList services_pending_deletion_;
-
-    // glib source id for deferred service deletion
-    guint deferred_service_deletion_source_id_;
-
     // delete a collection of services
-    // deletes services immediately if |defer| == false
-    // schedules services for later deletion if |defer| == true
-    void DeleteServices(ServiceMap *service_map, bool defer);
-
-    // deletes members of |services_pending_deletion_| immediately
-    void DeletePendingServices();
-
-    // schedule service for later deletion from the main loop
-    void ScheduleServiceForLaterDeletion(Service *service);
-
-    // glib integration: static wrapper for DeletePendingServices
-    // takes object ptr as data and invokes object->DeletePendingServices()
-    // does not reschedule itself to run again
-    static gboolean StaticDeletePendingServicesCallback(gpointer data);
+    void DeleteServices(ServiceMap *service_map);
 
     // glib integration: static wrapper for GetFlimflamProperties
     // takes object ptr as data and invokes object->GetFlimflamProperties()

@@ -47,8 +47,6 @@ static ServiceManager *service_manager = NULL;
 static void OnSignal(int signal) {
   DLOG(INFO) << "received signal " << signal;
   if (main_loop != NULL) {
-    // TODO(vlaviano): g_idle_add a callback to quit the main loop instead of
-    // doing it directly here to remove some low severity races
     g_main_loop_quit(main_loop);
   }
 }
@@ -80,7 +78,6 @@ int InstallSignalHandlers() {
 
 // should not be called while event loop is running
 static void CleanUpForExit() {
-  DCHECK(main_loop == NULL || !g_main_loop_is_running(main_loop));
   DLOG(INFO) << "cleaning up";
   delete server;
   server = NULL;
@@ -128,7 +125,7 @@ int main(int argc, char *argv[]) {
   DBus::Connection client_conn = DBus::Connection::SystemBus();
   client_conn.set_timeout(cashew::kDBusConnectionTimeoutMilliseconds);
   cashew::service_manager = new(std::nothrow) cashew::ServiceManager(
-      client_conn, cashew::main_loop);
+      client_conn);
   if (cashew::service_manager == NULL) {
     LOG(ERROR) << "couldn't create service manager";
     cashew::CleanUpForExit();
@@ -141,7 +138,7 @@ int main(int argc, char *argv[]) {
   server_conn.request_name(cashew::CashewServer::kServiceName);
   server_conn.set_timeout(cashew::kDBusConnectionTimeoutMilliseconds);
   cashew::server = new(std::nothrow) cashew::CashewServer(server_conn,
-      cashew::service_manager, cashew::main_loop);
+      cashew::service_manager);
   if (cashew::server == NULL) {
     LOG(ERROR) << "couldn't create cashew server";
     cashew::CleanUpForExit();

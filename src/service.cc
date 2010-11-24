@@ -83,8 +83,7 @@ Service::Service(ServiceManager * const parent,
       update_timeout_source_(NULL), policy_(NULL),
       is_default_service_(false), get_properties_source_id_(0),
       retrying_get_properties_(false),
-      connectivity_state_(kConnectivityStateUnknown),
-      deferred_device_deletion_source_id_(0) {
+      connectivity_state_(kConnectivityStateUnknown) {
   // schedule a GetProperties() call to our Flimflam service path to init state
   // we'll keep trying periodically until we succeed
   // we'll subsequently update this state by monitoring PropertyChanged signals
@@ -98,24 +97,14 @@ Service::Service(ServiceManager * const parent,
 Service::~Service() {
   DeleteCarrierState();
   DeleteDataPlans(&data_plans_);
-  // ServiceManager ensures that this dtor is not being called from within a
-  // D-Bus callback, so it's ok to delete |device_| and any members of
-  // |devices_pending_deletion_| directly.
   if (device_ != NULL) {
-    DLOG(INFO) << path_ << ": dtor: deleting device " << device_->GetPath();
+    DLOG(INFO) << path_ << ": deleting device " << device_->GetPath();
     delete device_;
     device_ = NULL;
   }
-  DeletePendingDevices();
   if (get_properties_source_id_ != 0 &&
       !g_source_remove(get_properties_source_id_)) {
-    DLOG(WARNING) << path_ << ": dtor: g_source_remove failed for source id "
-        << get_properties_source_id_;
-  }
-  if (deferred_device_deletion_source_id_ != 0 &&
-      !g_source_remove(deferred_device_deletion_source_id_)) {
-    DLOG(WARNING) << path_ << ": dtor: g_source_remove failed for source id "
-        << deferred_device_deletion_source_id_;
+    DLOG(WARNING) << path_ << ": dtor: g_source_remove failed";
   }
 }
 
@@ -461,65 +450,7 @@ void Service::OnRetryingGetProperties(bool retrying) {
   retrying_get_properties_ = retrying;
 }
 
-guint Service::GetDeferredDeviceDeletionSourceId() const {
-  return deferred_device_deletion_source_id_;
-}
-
-void Service::SetDeferredDeviceDeletionSourceId(guint source_id) {
-  deferred_device_deletion_source_id_ = source_id;
-}
-
 // Private methods
-
-void Service::DeletePendingDevices() {
-  while (!devices_pending_deletion_.empty()) {
-    Device *device = *(devices_pending_deletion_.begin());
-    DCHECK(device != NULL);
-    DLOG(INFO) << path_ << ": DeletePendingDevices: deleting device: "
-        << device->GetPath();
-    DCHECK(device != device_);
-    delete device;
-    devices_pending_deletion_.erase(devices_pending_deletion_.begin());
-  }
-}
-
-void Service::ScheduleDeviceForLaterDeletion(Device *device) {
-  DCHECK(device != NULL);
-  DCHECK(device != device_);
-  // We might be inside of a D-Bus callback. We add the device to our
-  // |devices_pending_deletion_| list and schedule a glib callback to
-  // delete these devices from the main loop if one is not already
-  // scheduled.
-  DLOG(INFO) << path_ << ": ScheduleDeviceForLaterDeletion: "
-      << device->GetPath();
-  devices_pending_deletion_.push_back(device);
-  if (deferred_device_deletion_source_id_ != 0) {
-    DLOG(INFO) << path_ << ": ScheduleDeviceForLaterDeletion: "
-        << "deferred device deletion callback already scheduled";
-    return;
-  }
-  deferred_device_deletion_source_id_ =
-      g_idle_add(StaticDeletePendingDevicesCallback, this);
-  if (deferred_device_deletion_source_id_ == 0) {
-    LOG(ERROR) << path_
-        << ": ScheduleDeviceForLaterDeletion: g_idle_add failed";
-    return;
-  }
-  DLOG(INFO) << path_ << ": ScheduleDeviceForLaterDeletion: "
-      << "scheduled deferred device deletion callback";
-}
-
-// static
-gboolean Service::StaticDeletePendingDevicesCallback(gpointer data) {
-  Service *service = reinterpret_cast<Service*>(data);
-  DCHECK(service != NULL);
-  DCHECK_NE(service->GetDeferredDeviceDeletionSourceId(), 0);
-  service->DeletePendingDevices();
-  // we don't want to be run again automatically
-  // ScheduleDeviceForLaterDeletion will schedule us as needed
-  service->SetDeferredDeviceDeletionSourceId(0);
-  return FALSE;
-}
 
 // static
 Service::ConnectivityState Service::ConnectivityStateFromString(
@@ -576,12 +507,8 @@ void Service::OnDeviceUpdate(const DBus::Path& device_path) {
   if (device_ != NULL && device_->GetPath() != device_path) {
     LOG(WARNING) << path_ << ": OnDeviceUpdate: device path changed from "
         << device_->GetPath() << " to " << device_path;
-    // We might be in a D-Bus callback, so schedule device for later deletion
-    // to avoid possible deadlock. See the comments in service_manager.h and
-    // service_manager.cc for more on this issue.
-    Device *device_to_delete = device_;
+    delete device_;
     device_ = NULL;
-    ScheduleDeviceForLaterDeletion(device_to_delete);
   }
 
   // if there's an existing device with matching path: all is well
