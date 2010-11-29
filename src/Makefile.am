@@ -34,6 +34,8 @@ libcashew_la_SOURCES = \
   policy.cc \
   procfs_byte_counter.h \
   procfs_byte_counter.cc \
+  property_changed_handler.h \
+  property_changed_handler.cc \
   service.h \
   service.cc \
   service_manager.h \

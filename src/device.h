@@ -14,6 +14,7 @@
 
 #include "src/byte_counter.h"
 #include "src/flimflam_device_client_glue.h"
+#include "src/property_changed_handler.h"
 
 namespace cashew {
 
@@ -24,7 +25,8 @@ class Service;
 class Device : public org::chromium::flimflam::Device_proxy,
                public DBus::IntrospectableProxy,
                public DBus::ObjectProxy,
-               public ByteCounterDelegate {
+               public ByteCounterDelegate,
+               public PropertyChangedDelegate {
   public:
     Device(Service * const parent, DBus::Connection& connection,  // NOLINT
            const DBus::Path& path);
@@ -59,8 +61,16 @@ class Device : public org::chromium::flimflam::Device_proxy,
 
     // Flimflam Device D-Bus Proxy methods
 
+    // receive incoming PropertyChanged D-Bus signal from Flimflam device and
+    // schedule deferred processing
     virtual void PropertyChanged(const std::string& property_name,
                                  const DBus::Variant& new_value);
+
+    // PropertyChangedDelegate methods
+
+    virtual void OnPropertyChanged(const PropertyChangedHandler *handler,
+                                   const std::string& property_name,
+                                   const DBus::Variant& new_value);
 
     // Service methods
 
@@ -132,6 +142,10 @@ class Device : public org::chromium::flimflam::Device_proxy,
     // counter may be logically running but we may not yet know our interface
     // name and therefore may not yet have created a byte counter object.
     bool byte_counter_running_;
+
+    // Handler for deferred processing of D-Bus PropertyChanged signals.
+    // See comments in service_manager.h
+    PropertyChangedHandler property_changed_handler_;
 
     // convert type string to Type enum value
     Type TypeFromString(const std::string& type) const;

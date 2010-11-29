@@ -18,13 +18,16 @@ const char* kCashewErrorServiceUnknown =
     "org.chromium.Cashew.Error.ServiceUnknown";
 
 CashewServer::CashewServer(DBus::Connection& connection,  // NOLINT
-                           ServiceManager * const service_manager)
+                           ServiceManager * const service_manager,
+                           GMainLoop * const main_loop)
     : DBus::ObjectAdaptor(connection, kServicePath),
-      service_manager_(CHECK_NOTNULL(service_manager)) {
+      service_manager_(CHECK_NOTNULL(service_manager)),
+      main_loop_(CHECK_NOTNULL(main_loop)) {
   service_manager_->SetCashewServer(this);
 }
 
 CashewServer::~CashewServer() {
+  DCHECK(!g_main_loop_is_running(main_loop_));
   service_manager_->SetCashewServer(NULL);
 }
 

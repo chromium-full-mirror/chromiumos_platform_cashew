@@ -33,11 +33,12 @@ static const guint kSecondsPerMinute = 60;
 static const guint kGetFlimflamPropertiesIntervalSeconds =
     1 * kSecondsPerMinute;
 
-ServiceManager::ServiceManager(DBus::Connection& connection)  // NOLINT
+ServiceManager::ServiceManager(DBus::Connection& connection,  // NOLINT
+                               GMainLoop * const main_loop)
     : DBus::ObjectProxy(connection, kFlimflamManagerPath,
                         kFlimflamManagerName),
-      connection_(connection), cashew_server_(NULL),
-      default_technology_(Service::kTypeUnknown),
+      connection_(connection), main_loop_(CHECK_NOTNULL(main_loop)),
+      cashew_server_(NULL), default_technology_(Service::kTypeUnknown),
       default_cellular_service_(NULL),
       connectivity_state_(kConnectivityStateUnknown),
       get_properties_source_id_(0), retrying_get_properties_(false) {
@@ -49,9 +50,11 @@ ServiceManager::ServiceManager(DBus::Connection& connection)  // NOLINT
   if (get_properties_source_id_ == 0) {
     LOG(ERROR) << "ctor: g_idle_add failed";
   }
+  property_changed_handler_.delegate(this);
 }
 
 ServiceManager::~ServiceManager() {
+  DCHECK(!g_main_loop_is_running(main_loop_));
   ClearDefaultCellularService();
   DeleteServices(&services_);
   if (get_properties_source_id_ != 0 &&
@@ -109,6 +112,32 @@ bool ServiceManager::IsOnlineConnectivityState(
 void ServiceManager::PropertyChanged(const std::string& property_name,
                                      const DBus::Variant& new_value) {
   DLOG(INFO) << "PropertyChanged: property_name = " << property_name;
+  // Queue a tuple representing this signal for later processing from the glib
+  // main loop.  We do this to avoid libdbus-c++ deadlocks that can occur when
+  // sending a dbus message from within a dbus callback like this one.
+  PropertyChangedSignal signal(property_name, new_value);
+  property_changed_handler_.EnqueueSignal(signal);
+}
+
+void ServiceManager::StateChanged(const std::string& new_state_string) {
+  DLOG(INFO) << "StateChanged: new_state_string = " << new_state_string;
+  // Queue a tuple representing this signal for later processing from the glib
+  // main loop. See comments in PropertyChanged above.
+  DBus::Variant new_value;
+  new_value.writer().append_string(new_state_string.c_str());
+  // StateChanged is a special case of PropertyChanged, so we just construct a
+  // PropertyChanged signal containing the new state info
+  PropertyChangedSignal signal(kStateProperty, new_value);
+  property_changed_handler_.EnqueueSignal(signal);
+}
+
+// PropertyChangedDelegate methods
+
+void ServiceManager::OnPropertyChanged(const PropertyChangedHandler *handler,
+                                       const std::string& property_name,
+                                       const DBus::Variant& new_value) {
+  DCHECK(handler == &property_changed_handler_);
+  DLOG(INFO) << "OnPropertyChanged: property_name = " << property_name;
   if (property_name == kDefaultTechnologyProperty) {
     OnDefaultTechnologyUpdate(new_value.reader().get_string());
   } else if (property_name == kServicesProperty) {
@@ -118,25 +147,9 @@ void ServiceManager::PropertyChanged(const std::string& property_name,
     reader >> paths;
     OnServicesUpdate(paths);
   } else if (property_name == kStateProperty) {
-    // this has its own signal, StateChanged, but just in case...
-    StateChanged(new_value.reader().get_string());
+    OnStateUpdate(new_value.reader().get_string());
   } else {
     // we don't care about this property
-  }
-}
-
-void ServiceManager::StateChanged(const std::string& new_state_string) {
-  DLOG(INFO) << "StateChanged: new_state = " << new_state_string;
-  ConnectivityState old_state = connectivity_state_;
-  connectivity_state_ = ConnectivityStateFromString(new_state_string);
-  // see if we're coming online or going offline
-  // NOTE: we consider "unknown" to be offline
-  if (IsOfflineConnectivityState(old_state) &&
-      IsOnlineConnectivityState(connectivity_state_)) {
-    OnFlimflamOnline();
-  } else if (IsOnlineConnectivityState(old_state) &&
-      IsOfflineConnectivityState(connectivity_state_)) {
-    OnFlimflamOffline();
   }
 }
 
@@ -268,6 +281,21 @@ bool ServiceManager::GetFlimflamProperties() {
     DLOG(WARNING) << "GetFlimflamProperties: no State property";
   }
   return true;
+}
+
+void ServiceManager::OnStateUpdate(const std::string& new_state_string) {
+  DLOG(INFO) << "OnStateUpdate: new_state = " << new_state_string;
+  ConnectivityState old_state = connectivity_state_;
+  connectivity_state_ = ConnectivityStateFromString(new_state_string);
+  // see if we're coming online or going offline
+  // NOTE: we consider "unknown" to be offline
+  if (IsOfflineConnectivityState(old_state) &&
+      IsOnlineConnectivityState(connectivity_state_)) {
+    OnFlimflamOnline();
+  } else if (IsOnlineConnectivityState(old_state) &&
+      IsOfflineConnectivityState(connectivity_state_)) {
+    OnFlimflamOffline();
+  }
 }
 
 void ServiceManager::OnDefaultTechnologyUpdate(

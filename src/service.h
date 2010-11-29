@@ -18,6 +18,7 @@
 #include "src/data_plan.h"
 #include "src/data_plan_provider.h"
 #include "src/flimflam_service_client_glue.h"
+#include "src/property_changed_handler.h"
 
 namespace cashew {
 
@@ -32,7 +33,8 @@ typedef std::map<std::string, DBus::Variant> PropertyMap;
 class Service : public org::chromium::flimflam::Service_proxy,
                 public DBus::IntrospectableProxy,
                 public DBus::ObjectProxy,
-                public DataPlanProviderDelegate {
+                public DataPlanProviderDelegate,
+                public PropertyChangedDelegate {
   public:
     Service(ServiceManager * const parent,
             DBus::Connection& connection,  // NOLINT
@@ -98,9 +100,16 @@ class Service : public org::chromium::flimflam::Service_proxy,
 
     // Flimflam Service D-Bus Proxy methods
 
-    // receive incoming PropertyChanged D-Bus signal from Flimflam service
+    // receive incoming PropertyChanged D-Bus signal from Flimflam service and
+    // schedule deferred processing
     virtual void PropertyChanged(const std::string& property_name,
                                  const DBus::Variant& new_value);
+
+    // PropertyChangedDelegate methods
+
+    virtual void OnPropertyChanged(const PropertyChangedHandler *handler,
+                                   const std::string& property_name,
+                                   const DBus::Variant& new_value);
 
     // Device methods
 
@@ -198,6 +207,10 @@ class Service : public org::chromium::flimflam::Service_proxy,
     // Service connectivity state
     // finer-grained connectivity info applicable when |state_| == kStateReady
     ConnectivityState connectivity_state_;
+
+    // Handler for deferred processing of D-Bus PropertyChanged signals.
+    // See comments in service_manager.h
+    PropertyChangedHandler property_changed_handler_;
 
     // convert connectivity state string to ConnectivityState enum value
     static ConnectivityState ConnectivityStateFromString(

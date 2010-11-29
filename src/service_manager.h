@@ -5,6 +5,8 @@
 #ifndef SRC_SERVICE_MANAGER_H_
 #define SRC_SERVICE_MANAGER_H_
 
+#include <glib.h>
+
 #include <map>
 #include <string>
 #include <vector>
@@ -13,6 +15,7 @@
 #include <dbus-c++/dbus.h>  // NOLINT
 
 #include "src/flimflam_manager_client_glue.h"
+#include "src/property_changed_handler.h"
 #include "src/service.h"
 
 namespace cashew {
@@ -28,9 +31,11 @@ typedef std::vector<DBus::Path> ServicePathList;
 // monitors Flimflam and maintains a collection of cellular service objects
 class ServiceManager : public org::chromium::flimflam::Manager_proxy,
                        public DBus::IntrospectableProxy,
-                       public DBus::ObjectProxy {
+                       public DBus::ObjectProxy,
+                       public PropertyChangedDelegate {
   public:
-    explicit ServiceManager(DBus::Connection& connection);  // NOLINT
+    ServiceManager(DBus::Connection& connection,  // NOLINT
+                   GMainLoop * const main_loop);
     virtual ~ServiceManager();
 
     // look up a service by its path name
@@ -66,12 +71,22 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
 
     // Flimflam Manager D-Bus Proxy methods
 
-    // receive incoming PropertyChanged D-Bus signal from Flimflam
+    // receive incoming PropertyChanged D-Bus signal from Flimflam and
+    // schedule deferred processing
     virtual void PropertyChanged(const std::string& property_name,
                                  const DBus::Variant& new_value);
 
-    // receive incoming StateChanged D-Bus signal from Flimflam
+    // receive incoming StateChanged D-Bus signal from Flimflam, convert to a
+    // PropertyChanged signal, and schedule deferred processing
     virtual void StateChanged(const std::string& new_state_string);
+
+    // PropertyChangedDelegate methods
+
+    // Perform deferred processing for an incoming PropertyChanged D-Bus signal
+    // from Flimflam
+    virtual void OnPropertyChanged(const PropertyChangedHandler *handler,
+                                   const std::string& property_name,
+                                   const DBus::Variant& new_value);
 
     // Service methods
 
@@ -96,6 +111,9 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
     // D-Bus connection owned by our creator
     // shared with Service objs that we create
     DBus::Connection& connection_;
+
+    // glib main loop
+    GMainLoop * const main_loop_;
 
     // collection of Service objs representing cellular services
     ServiceMap services_;
@@ -123,6 +141,16 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
     // and our subsequent timer calls
     bool retrying_get_properties_;
 
+    // Handler for deferred processing of D-Bus PropertyChanged signals.
+    //
+    // We construct and enqueue PropertyChangedSignal objects as D-Bus signals
+    // arrive, and the handler calls our OnPropertyChanged method (part of our
+    // PropertyChangedDelegate interface) later from the glib main loop.
+    //
+    // This is done to avoid a libdbus-c++ deadlock that can occur when dbus
+    // messages are sent from within a dbus callback.
+    PropertyChangedHandler property_changed_handler_;
+
     // delete a collection of services
     void DeleteServices(ServiceMap *service_map);
 
@@ -134,6 +162,9 @@ class ServiceManager : public org::chromium::flimflam::Manager_proxy,
     // DefaultTechnology
     // returns true on success and false on failure
     bool GetFlimflamProperties();
+
+    // we've received updated State info from Flimflam
+    void OnStateUpdate(const std::string& new_state_string);
 
     // we've received updated DefaultTechnology info from Flimflam
     void OnDefaultTechnologyUpdate(const std::string& default_technology);

@@ -92,6 +92,7 @@ Service::Service(ServiceManager * const parent,
   if (get_properties_source_id_ == 0) {
     LOG(ERROR) << path_ << ": ctor: g_idle_add failed";
   }
+  property_changed_handler_.delegate(this);
 }
 
 Service::~Service() {
@@ -182,6 +183,21 @@ Service::ConnectivityState Service::GetConnectivityState() const {
 void Service::PropertyChanged(const std::string& property_name,
                               const DBus::Variant& new_value) {
   DLOG(INFO) << path_ << ": PropertyChanged: property_name = " << property_name;
+  // Queue a tuple representing this signal for later processing from the glib
+  // main loop. We do this to avoid libdbus-c++ deadlocks that can occur when
+  // sending a dbus message from within a dbus callback like this one.
+  PropertyChangedSignal signal(property_name, new_value);
+  property_changed_handler_.EnqueueSignal(signal);
+}
+
+// PropertyChangedDelegate methods
+
+void Service::OnPropertyChanged(const PropertyChangedHandler *handler,
+                                const std::string& property_name,
+                                const DBus::Variant& new_value) {
+  DCHECK(handler == &property_changed_handler_);
+  DLOG(INFO) << path_ << ": OnPropertyChanged: property_name = "
+      << property_name;
   if (property_name == kFlimflamServiceDeviceProperty) {
     OnDeviceUpdate(new_value.reader().get_path());
   } else if (property_name == kFlimflamServiceStateProperty) {
