@@ -93,8 +93,7 @@ static void CleanUpForExit() {
     g_main_loop_unref(main_loop);
     main_loop = NULL;
   }
-  // TODO(vlaviano): uncomment when we get a newer version of glog
-  // google::ShutdownGoogleLogging();
+  google::ShutdownGoogleLogging();
 }
 
 }  // namespace cashew

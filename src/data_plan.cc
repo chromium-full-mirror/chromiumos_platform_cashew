@@ -306,7 +306,7 @@ DataPlan* DataPlan::GetActivePlan(const DataPlanList& data_plans) {
   DataPlanList::const_iterator it;
   for (it = data_plans.begin(); it != data_plans.end(); ++it) {
     DataPlan *plan = *it;
-    DCHECK(plan != NULL);
+    DCHECK_NOTNULL(plan);
     if (plan->IsActive()) {
       return plan;
     }
@@ -325,7 +325,7 @@ const char* DataPlan::TypeToLibcrosString(DataPlan::Type type) const {
     case kTypeMeteredPaid:
       return kCellularDataPlanTypeMeteredPaid;
     default:
-      DCHECK(false);
+      CHECK(false);
   }
 }
 
