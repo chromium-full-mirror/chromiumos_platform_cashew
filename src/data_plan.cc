@@ -306,7 +306,7 @@ DataPlan* DataPlan::GetActivePlan(const DataPlanList& data_plans) {
   DataPlanList::const_iterator it;
   for (it = data_plans.begin(); it != data_plans.end(); ++it) {
     DataPlan *plan = *it;
-    DCHECK_NOTNULL(plan);
+    DCHECK(plan != NULL);
     if (plan->IsActive()) {
       return plan;
     }
