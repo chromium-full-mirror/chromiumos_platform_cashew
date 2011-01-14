@@ -267,6 +267,7 @@ bool DataPlan::TimeFromIso8601(const std::string& time_8601,
   // if that fails, try format with no timezone suffix
   // we'll interpret this as either UTC or local time based on input flag
   // TODO(vlaviano): support +/-nn:nn timezone specifier
+  memset(&tm, 0, sizeof(tm));
   if (strptime(time_8601.c_str(), kIso8601UtcFormat, &tm) != NULL) {
     tm_is_utc = true;
   } else if (strptime(time_8601.c_str(), kIso8601ZonelessFormat, &tm) != NULL) {
@@ -280,6 +281,7 @@ bool DataPlan::TimeFromIso8601(const std::string& time_8601,
         << time_8601;
     return false;
   }
+  tm.tm_isdst = -1;
 
   // convert from struct tm to time_t
   if (tm_is_utc) {
