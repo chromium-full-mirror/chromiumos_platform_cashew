@@ -1,4 +1,4 @@
-# Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
+# Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -13,6 +13,7 @@ PKG_CHECK_MODULES([DBUS_CPP], [dbus-c++-1])
 # TODO(vlaviano): check for gflags
 PKG_CHECK_MODULES([GLIB], [glib-2.0])
 PKG_CHECK_MODULES([GLOG], [libglog])
+# TODO(vlaviano): check for gmock
 # TODO(vlaviano): check for gtest
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([

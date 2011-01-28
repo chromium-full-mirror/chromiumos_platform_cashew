@@ -1,0 +1,923 @@
+// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "src/service_impl.h"
+
+#include <glog/logging.h>
+
+#include "src/data_plan_provider.h"
+#include "src/device.h"
+#include "src/policy.h"
+#include "src/service_manager.h"
+
+namespace cashew {
+
+// Flimflam Service D-Bus identifiers
+static const char *kFlimflamServiceName = "org.chromium.flimflam";
+
+// Flimflam Service property names
+static const char *kFlimflamServiceConnectivityStateProperty =
+    "ConnectivityState";
+static const char *kFlimflamServiceDeviceProperty = "Device";
+static const char *kFlimflamServiceStateProperty = "State";
+static const char *kFlimflamServiceTypeProperty = "Type";
+static const char *kFlimflamServiceUsageUrlProperty = "Cellular.UsageUrl";
+
+// Flimflam Service on-the-wire ConnectivityState values
+static const char *kFlimflamServiceConnectivityStateUnknown = "unknown";
+static const char *kFlimflamServiceConnectivityStateRestricted = "restricted";
+static const char *kFlimflamServiceConnectivityStateUnrestricted =
+    "unrestricted";
+static const char *kFlimflamServiceConnectivityStateNone = "none";
+
+// Flimflam Service on-the-wire State values
+static const char *kFlimflamServiceStateIdle = "idle";
+static const char *kFlimflamServiceStateCarrier = "carrier";
+static const char *kFlimflamServiceStateAssociation = "association";
+static const char *kFlimflamServiceStateConfiguration = "configuration";
+static const char *kFlimflamServiceStateReady = "ready";
+static const char *kFlimflamServiceStateDisconnect = "disconnect";
+static const char *kFlimflamServiceStateFailure = "failure";
+static const char *kFlimflamServiceStateActivationFailure =
+    "activation-failure";
+
+// Flimflam Service on-the-wire Type values
+static const char *kFlimflamServiceTypeEthernet = "ethernet";
+static const char *kFlimflamServiceTypeWifi = "wifi";
+static const char *kFlimflamServiceTypeWimax = "wimax";
+static const char *kFlimflamServiceTypeBluetooth = "bluetooth";
+static const char *kFlimflamServiceTypeCellular = "cellular";
+
+// Chromium OS Usage API property names
+static const char *kCrosUsageVersionProperty = "version";
+static const char *kCrosUsageStatusProperty = "status";
+static const char *kCrosUsageRestrictedProperty = "restricted";
+static const char *kCrosUsagePlansProperty = "plans";
+
+// Chromium OS Usage API version values
+static const int kCrosUsageVersionMinSupported = 1;
+static const int kCrosUsageVersionMaxSupported = 1;
+
+// Chromium OS Usage API status values
+// NOTE: add new values to IsValidCrosUsageStatus below also
+static const char *kCrosUsageStatusOk = "OK";
+static const char *kCrosUsageStatusError = "ERROR";
+static const char *kCrosUsageStatusMalformedRequest = "MALFORMED REQUEST";
+static const char *kCrosUsageStatusInternalError = "INTERNAL ERROR";
+static const char *kCrosUsageStatusServiceUnavailable = "SERVICE UNAVAILABLE";
+static const char *kCrosUsageStatusRequestRefused = "REQUEST REFUSED";
+static const char *kCrosUsageStatusUnknownDevice = "UNKNOWN DEVICE";
+
+// GetServiceProperties retry interval
+static const guint kSecondsPerMinute = 60;
+static const guint kGetServicePropertiesIntervalSeconds = 1 * kSecondsPerMinute;
+
+ServiceImpl::ServiceImpl(ServiceManager * const parent,
+                         DBus::Connection& connection,  // NOLINT
+                         const DBus::Path& path)
+    : DBus::ObjectProxy(connection, path, kFlimflamServiceName),
+      parent_(CHECK_NOTNULL(parent)), connection_(connection), path_(path),
+      state_(kStateUnknown), type_(kTypeUnknown), device_(NULL),
+      provider_(NULL), request_in_progress_(false),
+      update_timeout_source_(NULL), policy_(NULL),
+      is_default_service_(false), get_properties_source_id_(0),
+      retrying_get_properties_(false),
+      connectivity_state_(kConnectivityStateUnknown) {
+  // schedule a GetProperties() call to our Flimflam service path to init state
+  // we'll keep trying periodically until we succeed
+  // we'll subsequently update this state by monitoring PropertyChanged signals
+  get_properties_source_id_ =
+      g_idle_add(StaticGetServicePropertiesCallback, this);
+  if (get_properties_source_id_ == 0) {
+    LOG(ERROR) << path_ << ": ctor: g_idle_add failed";
+  }
+  property_changed_handler_.delegate(this);
+}
+
+ServiceImpl::~ServiceImpl() {
+  DeleteCarrierState();
+  DeleteDataPlans(&data_plans_);
+  if (device_ != NULL) {
+    DLOG(INFO) << path_ << ": deleting device " << device_->GetPath();
+    delete device_;
+    device_ = NULL;
+  }
+  if (get_properties_source_id_ != 0 &&
+      !g_source_remove(get_properties_source_id_)) {
+    DLOG(WARNING) << path_ << ": dtor: g_source_remove failed";
+  }
+}
+
+const DBus::Path& ServiceImpl::GetPath() const {
+  return path_;
+}
+
+Service::State ServiceImpl::GetState() const {
+  return state_;
+}
+
+Service::Type ServiceImpl::GetType() const {
+  return type_;
+}
+
+// static
+Service::Type ServiceImpl::TypeFromString(const std::string& type) {
+  if (type == kFlimflamServiceTypeEthernet) {
+    return kTypeEthernet;
+  }
+  if (type == kFlimflamServiceTypeWifi) {
+    return kTypeWifi;
+  }
+  if (type == kFlimflamServiceTypeWimax) {
+    return kTypeWimax;
+  }
+  if (type == kFlimflamServiceTypeBluetooth) {
+    return kTypeBluetooth;
+  }
+  if (type == kFlimflamServiceTypeCellular) {
+    return kTypeCellular;
+  }
+  return kTypeUnknown;
+}
+
+Device* ServiceImpl::GetDevice() const {
+  return device_;
+}
+
+DBusDataPlanList ServiceImpl::GetDBusDataPlans() const {
+  DBusDataPlanList dbus_data_plans;
+  DataPlanList::const_iterator it;
+  for (it = data_plans_.begin(); it != data_plans_.end(); ++it) {
+    DataPlan *plan = *it;
+    DCHECK(plan != NULL);
+    // filter out inactive plans
+    if (plan->IsActive()) {
+      dbus_data_plans.push_back(plan->ToDBusFormat());
+    } else {
+      DLOG(INFO) << path_ << ": GetBusDataPlans: skipping inactive plan: \""
+          << plan->GetName() << "\"";
+    }
+  }
+  return dbus_data_plans;
+}
+
+bool ServiceImpl::IsDefaultService() const {
+  if (is_default_service_) {
+    // cross-check with parent's idea of default technology
+    if (parent_->GetDefaultTechnology() != kTypeCellular) {
+      DLOG(WARNING) << path_ << ": IsDefaultService: "
+          << "service manager doesn't think default technology is cellular";
+    }
+    return true;
+  }
+  return false;
+}
+
+Service::ConnectivityState ServiceImpl::GetConnectivityState() const {
+  return connectivity_state_;
+}
+
+// Flimflam Service D-Bus Proxy methods
+
+void ServiceImpl::PropertyChanged(const std::string& property_name,
+                                  const DBus::Variant& new_value) {
+  DLOG(INFO) << path_ << ": PropertyChanged: property_name = " << property_name;
+  // Queue a tuple representing this signal for later processing from the glib
+  // main loop. We do this to avoid libdbus-c++ deadlocks that can occur when
+  // sending a dbus message from within a dbus callback like this one.
+  PropertyChangedSignal signal(property_name, new_value);
+  property_changed_handler_.EnqueueSignal(signal);
+}
+
+// PropertyChangedDelegate methods
+
+void ServiceImpl::OnPropertyChanged(const PropertyChangedHandler *handler,
+                                    const std::string& property_name,
+                                    const DBus::Variant& new_value) {
+  DCHECK(handler == &property_changed_handler_);
+  DLOG(INFO) << path_ << ": OnPropertyChanged: property_name = "
+      << property_name;
+  if (property_name == kFlimflamServiceDeviceProperty) {
+    OnDeviceUpdate(new_value.reader().get_path());
+  } else if (property_name == kFlimflamServiceStateProperty) {
+    OnStateUpdate(new_value.reader().get_string());
+  } else if (property_name == kFlimflamServiceTypeProperty) {
+    OnTypeUpdate(new_value.reader().get_string());
+  } else if (property_name == kFlimflamServiceUsageUrlProperty) {
+    OnUsageUrlUpdate(new_value.reader().get_string());
+  } else if (property_name == kFlimflamServiceConnectivityStateProperty) {
+    OnConnectivityStateUpdate(new_value.reader().get_string());
+  } else {
+    // we don't care about this property
+  }
+}
+
+// Device methods
+
+void ServiceImpl::OnCarrierUpdate(const std::string& carrier) {
+  DLOG(INFO) << path_ << ": OnCarrierUpdate: carrier = " << carrier;
+  DCHECK(device_ != NULL);
+  DCHECK(carrier == device_->GetCarrier());
+
+  // get rid of state associated with old carrier
+  if (provider_ != NULL) {
+    DCHECK(carrier != provider_->GetCarrier());
+  }
+  DeleteCarrierState();
+
+  // if we don't have new carrier info, we can't do anything now
+  if (carrier.empty()) {
+    return;
+  }
+
+  // create state for new carrier
+  DLOG(INFO) << path_ << ": OnCarrierUpdate: creating data plan provider";
+  provider_ = new(std::nothrow) DataPlanProvider(carrier);
+  if (provider_ == NULL) {
+    LOG(ERROR) << path_
+        << ": OnCarrierUpdate: could not create data plan provider";
+    return;
+  }
+  provider_->SetDelegate(this);
+  DLOG(INFO) << path_ << ": OnCarrierUpdate: getting policy for " << carrier;
+  policy_ = Policy::GetPolicy(carrier);
+  if (policy_ == NULL) {
+    LOG(ERROR) << path_ << ": OnCarrierUpdate: could not get policy for "
+        << carrier;
+    DeleteCarrierState();
+    return;
+  }
+
+  // if we already have usage url, set new provider in motion
+  if (!usage_url_.empty()) {
+    provider_->SetUsageUrl(usage_url_);
+    ReconsiderSendingUsageRequests();
+  } else {
+    // we'll do this later in OnUsageUrlUpdate
+  }
+}
+
+void ServiceImpl::OnByteCounterUpdate(uint64 rx_bytes, uint64 tx_bytes) {
+  DCHECK(device_ != NULL);
+  DCHECK(device_->ByteCounterRunning());
+  DLOG(INFO) << path_ << ": OnByteCounterUpdate: rx_bytes = " << rx_bytes
+      << ", tx_bytes = " << tx_bytes;
+  DataPlan *active_plan = DataPlan::GetActivePlan(data_plans_);
+  if (active_plan == NULL) {
+    DLOG(WARNING) << path_ << ": OnByteCounterUpdate: no active plan";
+    return;
+  }
+  Bytes local_bytes_used = rx_bytes + tx_bytes;
+  DLOG(INFO) << path_ << ": OnByteCounterUpdate: local_bytes_used = "
+      << local_bytes_used;
+  // try to detect two error conditions:
+  // (1) overflow of the unsigned addition above prior to the assignment
+  // (2) no overflow, but result has high order bit set and so is interpreted as
+  //     a negative number when assigned to |local_bytes_used|
+  if (local_bytes_used < 0 ||
+      static_cast<uint64>(local_bytes_used) < rx_bytes ||
+      static_cast<uint64>(local_bytes_used) < tx_bytes) {
+    LOG(WARNING) << path_ << ": OnByteCounterUpdate: overflow detected";
+    return;
+  }
+  active_plan->SetLocalBytesUsed(local_bytes_used);
+  DLOG(INFO) << path_
+      << ": OnByteCounterUpdate: updated plan state: data bytes used = "
+      << active_plan->GetDataBytesUsed() << ", local bytes used = "
+      << active_plan->GetLocalBytesUsed() << ", total bytes used = "
+      << active_plan->GetTotalBytesUsed();
+  MaybeEmitDataPlansUpdate();
+}
+
+// DataPlanProviderDelegate methods
+
+void ServiceImpl::OnRequestComplete(const DataPlanProvider *provider,
+                                    bool successful,
+                                    const Value *parsed_usage_update) {
+  DCHECK(provider != NULL);
+  DCHECK(!successful || parsed_usage_update != NULL);
+  if (provider != provider_) {
+    DLOG(WARNING) <<  path_ << ": OnRequestComplete: wrong provider";
+    return;
+  }
+  DCHECK(request_in_progress_);
+  DCHECK(policy_ != NULL);
+  DLOG(INFO) << path_ << ": OnRequestComplete: result = " << successful;
+  request_in_progress_ = false;
+  if (!successful) {
+    LOG(WARNING) << path_ << ": OnRequestComplete: request failed";
+    return;
+  }
+
+  // interpret and validate parsed usage update
+  if (!parsed_usage_update->IsType(Value::TYPE_DICTIONARY)) {
+    LOG(WARNING) << path_
+        << ": OnRequestComplete: root value is not a dictionary";
+    return;
+  }
+  const DictionaryValue *root =
+      static_cast<const DictionaryValue*>(parsed_usage_update);
+
+  int version;
+  if (!root->GetInteger(kCrosUsageVersionProperty, &version)) {
+    LOG(WARNING) << path_ << ": OnRequestComplete: no version property";
+    return;
+  }
+  DLOG(INFO) << path_ << ": OnRequestComplete: version = " << version;
+  if (version < kCrosUsageVersionMinSupported ||
+      version > kCrosUsageVersionMaxSupported) {
+    LOG(WARNING) << path_ << ": OnRequestComplete: version " << version
+        << " not in supported range of [" << kCrosUsageVersionMinSupported
+        << ", " << kCrosUsageVersionMaxSupported << "]";
+    return;
+  }
+
+  std::string status;
+  if (!root->GetString(kCrosUsageStatusProperty, &status)) {
+    LOG(WARNING) << path_ << ": OnRequestComplete: no status property";
+    return;
+  }
+  DLOG(INFO) << path_ << ": OnRequestComplete: status = " << status;
+  if (!IsValidCrosUsageStatus(status)) {
+    LOG(WARNING) << path_ << ": OnRequestComplete: invalid status: " << status;
+    return;
+  }
+  if (status != kCrosUsageStatusOk) {
+    LOG(WARNING) << path_ << ": OnRequestComplete: status: " << status;
+    OnCrosUsageErrorResult(status);
+    return;
+  }
+
+  bool restricted = false;
+  if (root->GetBoolean(kCrosUsageRestrictedProperty, &restricted)) {
+    DLOG(INFO) << path_ << ": OnRequestComplete: restricted = " << restricted;
+    // TODO(vlaviano): this should probably be combined with flimflam's
+    // ConnectivityState property to arrive at a conclusion.
+
+  } else {
+    DLOG(INFO) << path_ << ": OnRequestComplete: no restricted property";
+    // restricted property is optional
+  }
+
+  ListValue *plans = NULL;  // list to which this points is owned by dictionary
+  if (!root->GetList(kCrosUsagePlansProperty, &plans)) {
+    LOG(WARNING) << path_ << ": OnRequestComplete: no plans property";
+    return;
+  }
+  DCHECK(plans != NULL);
+  size_t plans_size = plans->GetSize();
+  DLOG(INFO) << path_ << ": OnRequestComplete: plans list has size "
+    << plans_size;
+
+  // walk plans list and convert each into a DataPlan object
+  DataPlanList new_plans;
+  for (size_t i = 0; i < plans_size; ++i) {
+    DictionaryValue *plan_dict = NULL;
+    if (!plans->GetDictionary(i, &plan_dict)) {
+      LOG(WARNING) << path_
+          << ": OnRequestComplete: could not get plan[" << i << "]";
+      continue;
+    }
+    DCHECK(plan_dict != NULL);
+    DataPlan *plan = DataPlan::FromDictionaryValue(plan_dict, policy_);
+    if (plan == NULL) {
+      LOG(WARNING) << path_
+          << ": OnRequestComplete: could not convert plan[" << i << "]";
+      continue;
+    }
+    DLOG(INFO) << path_ << ": OnRequestComplete: converted plan[" << i << "]";
+    new_plans.push_back(plan);
+  }
+
+  // store new info, causing it to be used for subsequent updates to clients
+  DataPlanList old_plans = data_plans_;
+  data_plans_ = new_plans;
+  LOG(INFO) << path_ << ": OnRequestComplete: updated data plans";
+
+  MaybeEmitDataPlansUpdate();
+
+  DLOG(INFO) << path_ << ": OnRequestComplete: deleting old data plans";
+  DeleteDataPlans(&old_plans);
+
+  // start local byte counter so that we can stop hitting usage API
+  // we'll stop the counter when we disconnect
+  // we don't bother if carrier told us that there are no active data plans
+  DataPlan *active_plan = DataPlan::GetActivePlan(data_plans_);
+  if (active_plan == NULL) {
+    DLOG(INFO) << path_
+        << ": OnRequestComplete: no active plans, not starting byte counter";
+    return;
+  }
+  DCHECK(device_ != NULL);
+  DCHECK(!device_->ByteCounterRunning());
+  if (!device_->StartByteCounter()) {
+    LOG(WARNING) << path_
+        << ": OnRequestComplete: could not start byte counter";
+    // we'll keep the update timer running and try again later
+  }
+  DLOG(INFO) << path_ << ": OnRequestComplete: started byte counter";
+  ReconsiderSendingUsageRequests();
+}
+
+// Service Manager methods
+
+void ServiceImpl::OnDefaultServiceUpdate(bool is_default_service) {
+  DCHECK(is_default_service_ == !is_default_service);
+  DLOG(INFO) << path_ << ": OnDefaultServiceUpdate: is_default_service = "
+      << is_default_service;
+  is_default_service_ = is_default_service;
+  if (is_default_service_) {
+    // we just became the default service
+    // cross-check with parent's idea of default technology
+    if (parent_->GetDefaultTechnology() != kTypeCellular) {
+      DLOG(WARNING) << path_ << ": OnDefaultServiceUpdate: "
+          << "service manager doesn't think default technology is cellular";
+    }
+  }
+  ReconsiderSendingUsageRequests();
+}
+
+void ServiceImpl::OnFlimflamOnline() {
+  DLOG(INFO) << path_ << ": OnFlimflamOnline";
+  ReconsiderSendingUsageRequests();
+}
+
+void ServiceImpl::OnFlimflamOffline() {
+  DLOG(INFO) << path_ << ": OnFlimflamOffline";
+  ReconsiderSendingUsageRequests();
+}
+
+// Private methods
+
+// static
+Service::ConnectivityState ServiceImpl::ConnectivityStateFromString(
+    const std::string& connectivity_state) {
+  if (connectivity_state == kFlimflamServiceConnectivityStateUnknown) {
+    return kConnectivityStateUnknown;
+  }
+  if (connectivity_state == kFlimflamServiceConnectivityStateRestricted) {
+    return kConnectivityStateRestricted;
+  }
+  if (connectivity_state == kFlimflamServiceConnectivityStateUnrestricted) {
+    return kConnectivityStateUnrestricted;
+  }
+  if (connectivity_state == kFlimflamServiceConnectivityStateNone) {
+    return kConnectivityStateNone;
+  }
+  return kConnectivityStateUnknown;
+}
+
+// static
+Service::State ServiceImpl::StateFromString(const std::string& state) {
+  if (state == kFlimflamServiceStateIdle) {
+    return kStateIdle;
+  }
+  if (state == kFlimflamServiceStateCarrier) {
+    return kStateCarrier;
+  }
+  if (state == kFlimflamServiceStateAssociation) {
+    return kStateAssociation;
+  }
+  if (state == kFlimflamServiceStateConfiguration) {
+    return kStateConfiguration;
+  }
+  if (state == kFlimflamServiceStateReady) {
+    return kStateReady;
+  }
+  if (state == kFlimflamServiceStateDisconnect) {
+    return kStateDisconnect;
+  }
+  if (state == kFlimflamServiceStateFailure) {
+    return kStateFailure;
+  }
+  if (state == kFlimflamServiceStateActivationFailure) {
+    return kStateActivationFailure;
+  }
+  return kStateUnknown;
+}
+
+void ServiceImpl::OnDeviceUpdate(const DBus::Path& device_path) {
+  DLOG(INFO) << path_ << ": OnDeviceUpdate: device_path = " << device_path;
+
+  // if there's an existing device with a non-matching path: destroy it and
+  // fall through to make a new one below.
+  if (device_ != NULL && device_->GetPath() != device_path) {
+    LOG(WARNING) << path_ << ": OnDeviceUpdate: device path changed from "
+        << device_->GetPath() << " to " << device_path;
+    delete device_;
+    device_ = NULL;
+  }
+
+  // if there's an existing device with matching path: all is well
+  if (device_ != NULL) {
+    return;
+  }
+
+  // if there's no existing device: make one
+  device_ = Device::NewDevice(this, connection_, device_path);
+  if (device_ == NULL) {
+    LOG(ERROR) << path_ << ": OnDeviceUpdate: couldn't create device for "
+        << device_path;
+    return;
+  }
+  DLOG(INFO) << path_ << ": OnDeviceUpdate: created device for "
+      << device_path;
+}
+
+void ServiceImpl::OnConnectivityStateUpdate(
+    const std::string& connectivity_state) {
+  DLOG(INFO) << path_ << ": OnConnectivityStateUpdate: connectivity_state = "
+      << connectivity_state;
+  Service::ConnectivityState new_connectivity_state =
+      ConnectivityStateFromString(connectivity_state);
+  if (connectivity_state_ == new_connectivity_state) {
+    return;
+  }
+  connectivity_state_ = new_connectivity_state;
+  ReconsiderSendingUsageRequests();
+}
+
+void ServiceImpl::OnStateUpdate(const std::string& state) {
+  DLOG(INFO) << path_ << ": OnStateUpdate: state = " << state;
+  Service::State old_state = state_;
+  state_ = StateFromString(state);
+  if (old_state != kStateReady && IsConnected()) {
+    OnConnected();
+  } else if (old_state == kStateReady && !IsConnected()) {
+    OnDisconnected();
+  }
+}
+
+void ServiceImpl::OnTypeUpdate(const std::string& type) {
+  DLOG(INFO) << path_ << ": OnTypeUpdate: type = " << type;
+  type_ = TypeFromString(type);
+  if (type_ != kTypeCellular) {
+    LOG(WARNING) << path_ << ": OnTypeUpdate: type is not cellular!";
+  }
+}
+
+void ServiceImpl::OnUsageUrlUpdate(const std::string& usage_url) {
+  DLOG(INFO) << path_ << ": OnUsageUrlUpdate: url = " << usage_url;
+  if (usage_url == usage_url_) {
+    return;
+  }
+  usage_url_ = usage_url;
+  if (provider_ != NULL) {
+    DCHECK(usage_url_ != provider_->GetUsageUrl());
+    StopSendingUsageRequests();
+    provider_->SetUsageUrl(usage_url_);
+    ReconsiderSendingUsageRequests();
+  }
+}
+
+// static
+gboolean ServiceImpl::StaticGetServicePropertiesCallback(gpointer data) {
+  ServiceImpl *service = reinterpret_cast<ServiceImpl*>(data);
+  CHECK_NOTNULL(service);
+  DCHECK_NE(service->get_properties_source_id_, 0);
+  if (!service->GetServiceProperties()) {
+    // call failed, so try again later
+    DLOG(WARNING) << service->GetPath()
+        << ": StaticGetServicePropertiesCallback: "
+        << "GetServiceProperties failed, will retry in "
+        << kGetServicePropertiesIntervalSeconds << " secs";
+    // if we've arrived here from our first g_idle_add call, set up a timer
+    if (!service->retrying_get_properties_) {
+      guint source_id =
+          g_timeout_add_seconds(kGetServicePropertiesIntervalSeconds,
+                                StaticGetServicePropertiesCallback, service);
+      service->get_properties_source_id_ = source_id;
+      if (source_id == 0) {
+        LOG(ERROR) << service->GetPath()
+            << ": StaticGetServicePropertiesCallback: "
+            << "g_timeout_add_seconds failed";
+        return FALSE;  // get rid of old glib source and give up
+      }
+      service->retrying_get_properties_ = true;
+      // get rid of our old glib source, but our new timer will call us
+      return FALSE;
+    }
+    // otherwise, our timer is already set up
+    // return TRUE to indicate that we want to be called again later
+    return TRUE;
+  }
+  service->get_properties_source_id_ = 0;
+  service->retrying_get_properties_ = false;
+  return FALSE;  // we succeeded, so don't repeat
+}
+
+bool ServiceImpl::GetServiceProperties() {
+  DLOG(INFO) << path_ << ": GetServiceProperties";
+  PropertyMap properties;
+  // dbus-c++ throws exceptions
+  // invoke the "Existing Non-conformant Code" clause of the style guide and
+  // isolate the rest of the system from this
+  try {
+    // TODO(vlaviano): make this call asynchronous
+    properties = GetProperties();
+  } catch (DBus::Error& error) {  // NOLINT
+    LOG(WARNING) << path_
+        << ": GetServiceProperties: GetProperties() -> Exception: "
+        << error.name() << ": " << error.message();
+    return false;
+  } catch (...) {  // NOLINT
+    LOG(WARNING) << path_
+        << ": GetServiceProperties: GetProperties() -> Exception";
+    return false;
+  }
+  DLOG(INFO) << path_ << ": GetServiceProperties: Received "
+      << properties.size() << " properties";
+
+  // grab the properties in which we're interested
+  PropertyMap::const_iterator it;
+  it = properties.find(kFlimflamServiceDeviceProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    OnDeviceUpdate(value.reader().get_path());
+  } else {
+    DLOG(WARNING) << path_ << ": GetServiceProperties: no Device property";
+  }
+  it = properties.find(kFlimflamServiceStateProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    OnStateUpdate(value.reader().get_string());
+  } else {
+    DLOG(WARNING) << path_ << ": GetServiceProperties: no State property";
+  }
+  it = properties.find(kFlimflamServiceTypeProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    OnTypeUpdate(value.reader().get_string());
+  } else {
+    DLOG(WARNING) << path_ << ": GetServiceProperties: no Type property";
+  }
+  // don't expect to find Cellular.* properties if we're not a cellular service
+  if (type_ != kTypeCellular) {
+    return true;
+  }
+  it = properties.find(kFlimflamServiceUsageUrlProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    OnUsageUrlUpdate(value.reader().get_string());
+  } else {
+    DLOG(WARNING) << path_
+        << ": GetServiceProperties: no Cellular.UsageUrl property";
+  }
+  // flimflam docs re: ConnectivityState: "This state is currently only
+  // computed for services of type Cellular"
+  it = properties.find(kFlimflamServiceConnectivityStateProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    OnConnectivityStateUpdate(value.reader().get_string());
+  } else {
+    DLOG(WARNING) << path_
+        << ": GetServiceProperties: no ConnectivityState property";
+  }
+  return true;
+}
+
+void ServiceImpl::DeleteDataPlans(DataPlanList *data_plans) {
+  DCHECK(data_plans != NULL);
+  while (!data_plans->empty()) {
+    DataPlan *plan = *data_plans->begin();
+    DCHECK(plan != NULL);
+    DLOG(INFO) << path_ << ": DeleteDataPlans: deleting plan: "
+        << plan->GetName();
+    delete plan;
+    data_plans->erase(data_plans->begin());
+  }
+}
+
+void ServiceImpl::AddHardcodedDataPlan() {
+  const std::string name = "Chromium OS Test Plan";
+  DataPlan::Type type = DataPlan::kTypeMeteredPaid;
+  base::Time update_time = base::Time::Now();
+  base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+  base::Time start_time = base::Time::Now() - twelve_hours;
+  base::Time end_time = base::Time::Now() + twelve_hours;
+  Bytes data_bytes_max = 100*1024*1024;  // 100 MB
+  Bytes data_bytes_used = 30*1024*1024;  // 30 MB
+
+  DataPlan *plan = new(std::nothrow) DataPlan(name, type, update_time,
+                                              start_time, end_time,
+                                              data_bytes_max, data_bytes_used);
+  if (plan == NULL) {
+    LOG(ERROR) << path_ << ": AddHardcodedDataPlan: could not create plan";
+    return;
+  }
+
+  data_plans_.push_back(plan);
+}
+
+void ServiceImpl::RequestUsageUpdate() {
+  DCHECK(ShouldSendUsageRequests());
+  if (request_in_progress_) {
+    DLOG(WARNING) << path_
+        << ": RequestUsageUpdate: request already in progress";
+    return;
+  }
+  request_in_progress_ = true;
+  if (!provider_->RequestUsageUpdate()) {
+    DLOG(WARNING) << path_ << ": RequestUsageUpdate: request failed";
+    request_in_progress_ = false;
+  } else {
+    DLOG(INFO) << path_ << ": RequestUsageUpdate: request succeeded";
+  }
+}
+
+void ServiceImpl::CancelPendingRequests() {
+  if (provider_ != NULL && request_in_progress_) {
+    provider_->CancelPendingRequests();
+    request_in_progress_ = false;
+  }
+}
+
+gboolean ServiceImpl::UpdateTimeoutCallback() {
+  DLOG(INFO) << path_ << ": UpdateTimeoutCallback";
+  RequestUsageUpdate();
+  return TRUE;
+}
+
+// static
+gboolean ServiceImpl::StaticUpdateTimeoutCallback(gpointer data) {
+  ServiceImpl *service = reinterpret_cast<ServiceImpl*>(data);
+  CHECK_NOTNULL(service);
+  return service->UpdateTimeoutCallback();
+}
+
+bool ServiceImpl::CreateUpdateTimer() {
+  DCHECK(provider_ != NULL);
+  DCHECK(policy_ != NULL);
+  guint idle_seconds = policy_->GetUpdateTimerIdleSecs(data_plans_);
+  DLOG(INFO) << path_ << ": CreateUpdateTimer: idle_seconds = " << idle_seconds;
+  if (update_timeout_source_ != NULL) {
+    DLOG(WARNING) << path_ << ": CreateUpdateTimer: timer already running";
+    return false;
+  }
+  update_timeout_source_ = g_timeout_source_new_seconds(idle_seconds);
+  if (update_timeout_source_ == NULL) {
+    DLOG(WARNING) << path_
+        << ": CreateUpdateTimer: could not create timeout source";
+    return false;
+  }
+  g_source_set_callback(update_timeout_source_, StaticUpdateTimeoutCallback,
+                        this, NULL);
+  g_source_attach(update_timeout_source_, NULL);
+  return true;
+}
+
+void ServiceImpl::DestroyUpdateTimer() {
+  DLOG(INFO) << path_ << ": DestroyUpdateTimer";
+  if (update_timeout_source_ != NULL) {
+    g_source_destroy(update_timeout_source_);
+    update_timeout_source_ = NULL;
+  }
+}
+
+void ServiceImpl::DeleteCarrierState() {
+  DLOG(INFO) << path_ << ": DeleteCarrierState";
+  if (policy_ != NULL) {
+    DLOG(INFO) << path_ << ": DeleteCarrierState: deleting policy";
+    delete policy_;
+    policy_ = NULL;
+  }
+  StopSendingUsageRequests();
+  if (provider_ != NULL) {
+    DLOG(INFO) << path_ << ": DeleteCarrierState: deleting data plan provider";
+    delete provider_;
+    provider_ = NULL;
+  }
+}
+
+bool ServiceImpl::IsValidCrosUsageStatus(const std::string& status) const {
+  if (status == kCrosUsageStatusOk ||
+      status == kCrosUsageStatusError ||
+      status == kCrosUsageStatusMalformedRequest ||
+      status == kCrosUsageStatusInternalError ||
+      status == kCrosUsageStatusServiceUnavailable ||
+      status == kCrosUsageStatusRequestRefused ||
+      status == kCrosUsageStatusUnknownDevice) {
+    return true;
+  }
+  return false;
+}
+
+void ServiceImpl::OnCrosUsageErrorResult(const std::string& status) {
+  DLOG(WARNING) << path_ << ": OnCrosUsageErrorResult: " << status;
+  // TODO(vlaviano): hook for future use
+}
+
+bool ServiceImpl::IsConnected() const {
+  if (state_ != kStateReady) {
+    return false;
+  }
+  // cross-check with parent Service Manager's idea of Flimflam global
+  // connectivity state
+  if (ServiceManager::IsOfflineConnectivityState(
+      parent_->GetConnectivityState())) {
+    DLOG(WARNING) << path_
+        << ": IsConnected: service manager thinks we're offline";
+    return false;
+  }
+  return true;
+}
+
+void ServiceImpl::OnConnected() {
+  DLOG(INFO) << path_ << ": OnConnected";
+  DCHECK(IsConnected());
+  ReconsiderSendingUsageRequests();
+}
+
+void ServiceImpl::OnDisconnected() {
+  DLOG(INFO) << path_ << ": OnDisconnected";
+  DCHECK(!IsConnected());
+  // stop byte counter
+  // we'll issue a new usage API request when we reconnect
+  if (device_ != NULL) {
+    device_->StopByteCounter();
+  }
+  ReconsiderSendingUsageRequests();
+}
+
+bool ServiceImpl::IsSendingUsageRequests() const {
+  return request_in_progress_ || update_timeout_source_ != NULL;
+}
+
+// NOTE: we centralize our decisionmaking here to avoid insanity and just call
+// ReconsiderSendingUsageRequests when anything changes
+bool ServiceImpl::ShouldSendUsageRequests() const {
+  if (provider_ == NULL) {
+    DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: no provider";
+    DCHECK(policy_ == NULL);
+    return false;
+  }
+  DCHECK(device_ != NULL);
+  DCHECK(!device_->GetCarrier().empty());
+  DCHECK(policy_ != NULL);
+  if (usage_url_.empty()) {
+    DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: no usage url";
+    return false;
+  }
+  if (ServiceManager::IsOfflineConnectivityState(
+      parent_->GetConnectivityState())) {
+    DLOG(INFO) << path_
+        << ": ShouldSendUsageRequests: no: flimflam is offline";
+    return false;
+  }
+  if (!IsConnected()) {
+    DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: not connected";
+    return false;
+  }
+  if (!IsDefaultService()) {
+    DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: not default service";
+    return false;
+  }
+  // TODO(vlaviano): this is a blunt way to ensure that we don't count local
+  // traffic if we're already in the restricted pool when cashew starts
+  if (GetConnectivityState() == kConnectivityStateRestricted) {
+    DLOG(INFO) << path_ << ": ShouldSendUsageRequests: no: in restricted pool";
+    return false;
+  }
+  if (device_->ByteCounterRunning()) {
+    DLOG(INFO) << path_
+        << ": ShouldSendUsageRequests: no: local byte counter is running";
+    return false;
+  }
+  DLOG(INFO) << path_ << ": ShouldSendUsageRequests: yes";
+  return true;
+}
+
+void ServiceImpl::StopSendingUsageRequests() {
+  DLOG(INFO) << path_ << ": StopSendingUsageRequests";
+  DestroyUpdateTimer();
+  CancelPendingRequests();
+}
+
+void ServiceImpl::StartSendingUsageRequests() {
+  DLOG(INFO) << path_ << ": StartSendingUsageRequests";
+  DCHECK(!IsSendingUsageRequests());
+  RequestUsageUpdate();
+  CreateUpdateTimer();
+}
+
+void ServiceImpl::ReconsiderSendingUsageRequests() {
+  DLOG(INFO) << path_ << ": ReconsiderSendingUsageRequests";
+  if (!IsSendingUsageRequests() && ShouldSendUsageRequests()) {
+    StartSendingUsageRequests();
+  } else if (IsSendingUsageRequests() && !ShouldSendUsageRequests()) {
+    StopSendingUsageRequests();
+  }
+}
+
+void ServiceImpl::MaybeEmitDataPlansUpdate() {
+  DCHECK(policy_ != NULL);
+  if (policy_->ShouldEmitDataPlansUpdate(data_plans_)) {
+    DLOG(INFO) << path_ << ": MaybeEmitDataPlansUpdate: sending update";
+    parent_->EmitDataPlansUpdate(*this);
+  } else {
+    DLOG(INFO) << path_ << ": MaybeEmitDataPlansUpdate: not sending update";
+  }
+}
+
+}  // namespace cashew

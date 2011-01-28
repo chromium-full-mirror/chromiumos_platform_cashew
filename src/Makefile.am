@@ -1,4 +1,4 @@
-# Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
+# Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -25,6 +25,8 @@ libcashew_la_SOURCES = \
   default_policy.cc \
   device.h \
   device.cc \
+  device_impl.h \
+  device_impl.cc \
   http_fetcher.h \
   json_reader.h \
   json_reader.cc \
@@ -38,8 +40,12 @@ libcashew_la_SOURCES = \
   property_changed_handler.cc \
   service.h \
   service.cc \
+  service_impl.h \
+  service_impl.cc \
   service_manager.h \
   service_manager.cc \
+  service_manager_impl.h \
+  service_manager_impl.cc \
   values.h \
   values.cc
 
@@ -127,18 +133,26 @@ cashew_unittest_SOURCES = \
   cashew_unittest.cc \
   data_plan_unittest.cc \
   default_policy_unittest.cc \
+  device_mock.h \
   json_reader_unittest.cc \
   procfs_byte_counter_unittest.cc \
+  service_manager_mock.h \
+  service_mock.h \
   values_unittest.cc
+
+GMOCK_CFLAGS =
+GMOCK_LIBS = -lgmock
 
 GTEST_CFLAGS =
 GTEST_LIBS = -lgtest
 
 cashew_unittest_CXXFLAGS = \
   $(COMMON_CFLAGS) \
+  $(GMOCK_CFLAGS) \
   $(GTEST_CFLAGS)
 
 cashew_unittest_LDADD = \
   $(LIBCASHEW) \
   $(COMMON_LIBS) \
+  $(GMOCK_LIBS) \
   $(GTEST_LIBS)
