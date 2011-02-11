@@ -70,6 +70,10 @@ class ServiceManager {
     // a child Service wants us to emit an update about its data plans
     virtual void EmitDataPlansUpdate(const Service& service) = 0;
 
+    // |plan|, associated with |service|, has become inactive
+    virtual void OnDataPlanInactive(const Service& service,
+                                    const DataPlan& plan) = 0;
+
     // factory
     static ServiceManager* NewServiceManager(
                                         DBus::Connection& connection,  // NOLINT

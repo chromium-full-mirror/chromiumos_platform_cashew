@@ -144,6 +144,15 @@ bool DeviceImpl::ByteCounterRunning() const {
   return byte_counter_running_;
 }
 
+void DeviceImpl::ResetByteCounter(uint64 rx_bytes, uint64 tx_bytes) {
+  DLOG(INFO) << path_ << ": ResetByteCounter: rx_bytes = " << rx_bytes
+      << ", tx_bytes = " << tx_bytes;
+  DCHECK(byte_counter_running_);
+  DCHECK(byte_counter_ != NULL);
+  byte_counter_->SetRxBytes(rx_bytes);
+  byte_counter_->SetTxBytes(tx_bytes);
+}
+
 // ByteCounterDelegate methods
 
 void DeviceImpl::OnByteCounterUpdate(const ByteCounter *counter,

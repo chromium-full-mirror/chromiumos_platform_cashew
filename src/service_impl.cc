@@ -259,35 +259,14 @@ void ServiceImpl::OnCarrierUpdate(const std::string& carrier) {
 }
 
 void ServiceImpl::OnByteCounterUpdate(uint64 rx_bytes, uint64 tx_bytes) {
-  DCHECK(device_ != NULL);
-  DCHECK(device_->ByteCounterRunning());
   DLOG(INFO) << path_ << ": OnByteCounterUpdate: rx_bytes = " << rx_bytes
       << ", tx_bytes = " << tx_bytes;
-  DataPlan *active_plan = DataPlan::GetActivePlan(data_plans_);
-  if (active_plan == NULL) {
-    DLOG(WARNING) << path_ << ": OnByteCounterUpdate: no active plan";
-    return;
+  // dispatch this notification to our data plans list and consider sending
+  // out a signal if any plans were updated
+  if (DataPlan::OnByteCounterUpdate(&data_plans_, this, parent_, device_,
+                                    rx_bytes, tx_bytes)) {
+    MaybeEmitDataPlansUpdate();
   }
-  Bytes local_bytes_used = rx_bytes + tx_bytes;
-  DLOG(INFO) << path_ << ": OnByteCounterUpdate: local_bytes_used = "
-      << local_bytes_used;
-  // try to detect two error conditions:
-  // (1) overflow of the unsigned addition above prior to the assignment
-  // (2) no overflow, but result has high order bit set and so is interpreted as
-  //     a negative number when assigned to |local_bytes_used|
-  if (local_bytes_used < 0 ||
-      static_cast<uint64>(local_bytes_used) < rx_bytes ||
-      static_cast<uint64>(local_bytes_used) < tx_bytes) {
-    LOG(WARNING) << path_ << ": OnByteCounterUpdate: overflow detected";
-    return;
-  }
-  active_plan->SetLocalBytesUsed(local_bytes_used);
-  DLOG(INFO) << path_
-      << ": OnByteCounterUpdate: updated plan state: data bytes used = "
-      << active_plan->GetDataBytesUsed() << ", local bytes used = "
-      << active_plan->GetLocalBytesUsed() << ", total bytes used = "
-      << active_plan->GetTotalBytesUsed();
-  MaybeEmitDataPlansUpdate();
 }
 
 // DataPlanProviderDelegate methods
@@ -696,8 +675,8 @@ void ServiceImpl::AddHardcodedDataPlan() {
   base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
   base::Time start_time = base::Time::Now() - twelve_hours;
   base::Time end_time = base::Time::Now() + twelve_hours;
-  Bytes data_bytes_max = 100*1024*1024;  // 100 MB
-  Bytes data_bytes_used = 30*1024*1024;  // 30 MB
+  ByteCount data_bytes_max = 100*1024*1024;  // 100 MB
+  ByteCount data_bytes_used = 30*1024*1024;  // 30 MB
 
   DataPlan *plan = new(std::nothrow) DataPlan(name, type, update_time,
                                               start_time, end_time,

@@ -53,16 +53,22 @@ class Device {
 
     // start a new byte counter from 0
     // there must not be an existing byte counter
-    // |parent_| will receive periodic updates via Service::OnByteCounterUpdate
+    // parent service will receive periodic updates via OnByteCounterUpdate
     // returns true on success and false on failure
     virtual bool StartByteCounter() = 0;
 
     // destroy any existing byte counter
-    // |parent_| will no longer receive updates after this call
+    // parent service will no longer receive updates after this call
     virtual void StopByteCounter() = 0;
 
     // is the byte counter running?
     virtual bool ByteCounterRunning() const = 0;
+
+    // reset byte counter to an arbitrary baseline value
+    // counter will continue to run and increment relative to new baseline
+    // there must be an existing byte counter
+    // parent service must already have received at least one update
+    virtual void ResetByteCounter(uint64 rx_bytes, uint64 tx_bytes) = 0;
 
     // factory
     static Device* NewDevice(Service * const parent,

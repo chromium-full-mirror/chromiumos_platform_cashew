@@ -26,7 +26,9 @@ class ProcfsByteCounter: public ByteCounter {
     virtual ~ProcfsByteCounter();
     virtual const std::string& GetInterface() const;
     virtual uint64 GetRxBytes() const;
+    virtual void SetRxBytes(uint64 rx_bytes);
     virtual uint64 GetTxBytes() const;
+    virtual void SetTxBytes(uint64 tx_bytes);
     virtual void SetDelegate(ByteCounterDelegate *delegate);
 
   private:

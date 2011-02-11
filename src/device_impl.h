@@ -54,10 +54,11 @@ class DeviceImpl : public Device,
     virtual bool StartByteCounter();
     virtual void StopByteCounter();
     virtual bool ByteCounterRunning() const;
+    virtual void ResetByteCounter(uint64 rx_bytes, uint64 tx_bytes);
 
     // ByteCounterDelegate methods
 
-    // called when bye counter is updated
+    // called when byte counter is updated
     virtual void OnByteCounterUpdate(const ByteCounter *counter,
                                      uint64 rx_bytes, uint64 tx_bytes);
 

@@ -22,6 +22,7 @@ class DeviceMock : public Device {
     MOCK_METHOD0(StartByteCounter, bool());
     MOCK_METHOD0(StopByteCounter, void());
     MOCK_CONST_METHOD0(ByteCounterRunning, bool());
+    MOCK_METHOD2(ResetByteCounter, void(uint64 rx_bytes, uint64 tx_bytes));
 };
 
 }  // namespace cashew

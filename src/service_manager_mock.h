@@ -22,6 +22,8 @@ class ServiceManagerMock : public ServiceManager {
     MOCK_CONST_METHOD0(GetConnectivityState,
                        ServiceManager::ConnectivityState());
     MOCK_METHOD1(EmitDataPlansUpdate, void(const Service& service));
+    MOCK_METHOD2(OnDataPlanInactive,
+                 void(const Service& service, const DataPlan& plan));
 };
 
 }  // namespace cashew

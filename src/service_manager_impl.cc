@@ -165,6 +165,15 @@ void ServiceManagerImpl::EmitDataPlansUpdate(const Service& service) {
   cashew_server_->EmitDataPlansUpdate(service);
 }
 
+void ServiceManagerImpl::OnDataPlanInactive(const Service& service,
+                                            const DataPlan& plan) {
+  DLOG(INFO) << "OnDataPlanInactive: service = " << service.GetPath()
+      << ", plan = " << plan.GetName();
+  DCHECK(!plan.IsActive());
+  // TODO(vlaviano): hook for future use
+  // we could emit a PlanExpired D-Bus signal for Chrome to consume
+}
+
 // Private methods
 
 void ServiceManagerImpl::DeleteServices(ServiceMap *service_map) {

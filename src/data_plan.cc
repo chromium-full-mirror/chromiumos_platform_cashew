@@ -8,7 +8,9 @@
 
 #include <glog/logging.h>
 
+#include "src/device.h"
 #include "src/policy.h"
+#include "src/service_manager.h"
 
 namespace cashew {
 
@@ -44,8 +46,8 @@ static const char *kCrosUsageDataPlanTypeMeteredPaid = "METERED_PAID";
 
 DataPlan::DataPlan(const std::string& name, DataPlan::Type type,
                    base::Time update_time, base::Time start_time,
-                   base::Time end_time, Bytes data_bytes_max,
-                   Bytes data_bytes_used)
+                   base::Time end_time, ByteCount data_bytes_max,
+                   ByteCount data_bytes_used)
     : name_(name), type_(type), update_time_(update_time),
       start_time_(start_time), end_time_(end_time),
       data_bytes_max_(data_bytes_max), data_bytes_used_(data_bytes_used),
@@ -77,23 +79,25 @@ base::Time DataPlan::GetEndTime() const {
   return end_time_;
 }
 
-Bytes DataPlan::GetDataBytesMax() const {
+ByteCount DataPlan::GetDataBytesMax() const {
   return data_bytes_max_;
 }
 
-Bytes DataPlan::GetDataBytesUsed() const {
+ByteCount DataPlan::GetDataBytesUsed() const {
   return data_bytes_used_;
 }
 
-Bytes DataPlan::GetLocalBytesUsed() const {
+ByteCount DataPlan::GetLocalBytesUsed() const {
   return local_bytes_used_;
 }
 
-Bytes DataPlan::GetTotalBytesUsed() const {
+ByteCount DataPlan::GetTotalBytesUsed() const {
   return total_bytes_used_;
 }
 
-void DataPlan::SetLocalBytesUsed(Bytes local_bytes_used) {
+// TODO(vlaviano): ensure that this method stops the plan's expiration timer
+// (when it is implemented in a future CL) if the plan is fully consumed
+void DataPlan::SetLocalBytesUsed(ByteCount local_bytes_used) {
   CHECK_GE(local_bytes_used, 0);
   local_bytes_used_ = local_bytes_used;
   total_bytes_used_ = data_bytes_used_ + local_bytes_used_;
@@ -314,6 +318,105 @@ DataPlan* DataPlan::GetActivePlan(const DataPlanList& data_plans) {
     }
   }
   return NULL;
+}
+
+// static
+bool DataPlan::OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
+                                   ServiceManager *service_manager,
+                                   Device *device, uint64 rx_bytes,
+                                   uint64 tx_bytes) {
+  DCHECK(data_plans != NULL);
+  DCHECK(service != NULL);
+  DCHECK(service_manager != NULL);
+  DCHECK(device != NULL);
+  DCHECK(device->ByteCounterRunning());
+  DLOG(INFO) << "OnByteCounterUpdate: rx_bytes = " << rx_bytes
+      << ", tx_bytes = " << tx_bytes;
+  DataPlan *active_plan = DataPlan::GetActivePlan(*data_plans);
+  if (active_plan == NULL) {
+    DLOG(WARNING) << "OnByteCounterUpdate: no active plan";
+    device->StopByteCounter();
+    return false;
+  }
+  ByteCount local_bytes_used = rx_bytes + tx_bytes;
+  DLOG(INFO) << "OnByteCounterUpdate: local_bytes_used = " << local_bytes_used;
+  // try to detect two error conditions:
+  // (1) overflow of the unsigned addition above prior to the assignment
+  // (2) no overflow, but result has high order bit set and so is interpreted as
+  //     a negative number when assigned to |local_bytes_used|
+  if (local_bytes_used < 0 ||
+      static_cast<uint64>(local_bytes_used) < rx_bytes ||
+      static_cast<uint64>(local_bytes_used) < tx_bytes) {
+    LOG(WARNING) << "OnByteCounterUpdate: overflow detected";
+    return false;
+  }
+  // compute delta since last sample
+  // this delta represents the data usage that we need to assign to active plans
+  // this computation relies on the local counter being based on the currently
+  //   active plan
+  // TODO(vlaviano): Currently, this is not always true. It's possible for the
+  //   local byte counter to be associated with a plan that was active at the
+  //   beginning of the sample interval but has now expired. A future CL will
+  //   add expiration timers to plan objects to handle this case.
+  ByteCount previous_local_bytes_used = active_plan->GetLocalBytesUsed();
+  DLOG(INFO) << "OnByteCounterUpdate: previous_local_bytes_used = "
+      << previous_local_bytes_used;
+  DCHECK_LE(previous_local_bytes_used, local_bytes_used);
+  ByteCount used_bytes_to_assign = local_bytes_used - previous_local_bytes_used;
+  DLOG(INFO) << "OnByteCounterUpdate: used_bytes_to_assign = "
+      << used_bytes_to_assign;
+  // iterate through active plans, assigning as much data as possible to each
+  // plan and expiring it if its data quota is fully consumed
+  ByteCount assigned_bytes = 0;
+  bool any_plan_updated = false;
+  while (used_bytes_to_assign > 0 && active_plan != NULL) {
+    ByteCount active_plan_data_remaining = 0;  // relevant for metered plans
+    if (active_plan->GetType() != DataPlan::kTypeUnlimited) {
+      active_plan_data_remaining = active_plan->GetDataBytesMax() -
+          active_plan->GetTotalBytesUsed();
+      DCHECK_GE(active_plan_data_remaining, 0);
+    }
+    if (active_plan->GetType() == DataPlan::kTypeUnlimited ||
+        used_bytes_to_assign < active_plan_data_remaining) {
+      // can assign all data from this sample and plan not fully consumed
+      assigned_bytes = used_bytes_to_assign;
+      used_bytes_to_assign = 0;
+    } else {
+      // plan fully consumed, and there might be an overage remaining to be
+      // assigned to the next active plan
+      assigned_bytes = active_plan_data_remaining;
+      used_bytes_to_assign -= assigned_bytes;
+    }
+    DCHECK_GE(assigned_bytes, 0);
+    active_plan->SetLocalBytesUsed(previous_local_bytes_used + assigned_bytes);
+    any_plan_updated = true;
+    DLOG(INFO) << "OnByteCounterUpdate: " << active_plan->GetName()
+        << ": updated plan state: data bytes used = "
+        << active_plan->GetDataBytesUsed() << ", local bytes used = "
+        << active_plan->GetLocalBytesUsed() << ", total bytes used = "
+        << active_plan->GetTotalBytesUsed();
+
+    if (!active_plan->IsActive()) {
+      // notify service manager that plan has become inactive
+      service_manager->OnDataPlanInactive(*service, *active_plan);
+
+      // we've consumed a plan, so reset byte counter to only reflect overage
+      // TODO(vlaviano): byte counter api shouldn't expose rx/tx split.
+      device->ResetByteCounter(used_bytes_to_assign, 0);
+      active_plan = DataPlan::GetActivePlan(*data_plans);
+    }
+  }
+
+  // if we have no more active plans, stop our local counter
+  if (active_plan == NULL) {
+    device->StopByteCounter();
+    // warn if we've measured usage beyond what should have been available
+    if (used_bytes_to_assign > 0) {
+      DLOG(WARNING) << "OnByteCounterUpdate: used_bytes_to_assign = "
+          << used_bytes_to_assign << ", but no active plan";
+    }
+  }
+  return any_plan_updated;
 }
 
 // private methods

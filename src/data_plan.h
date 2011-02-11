@@ -20,11 +20,14 @@
 namespace cashew {
 
 class DataPlan;
+class Device;
 class Policy;
+class Service;
+class ServiceManager;
 
 // byte count
 // TODO(vlaviano): this should be a uint64, but libcros/Chrome expects this
-typedef int64 Bytes;
+typedef int64 ByteCount;
 
 // List of DataPlan objects
 // TODO(vlaviano): consider promoting this from a typedef to a class
@@ -49,7 +52,8 @@ class DataPlan {
     // |data_bytes_max| must be set to 0 for unlimited plans
     DataPlan(const std::string& name, DataPlan::Type type,
              base::Time update_time, base::Time start_time,
-             base::Time end_time, Bytes data_bytes_max, Bytes data_bytes_used);
+             base::Time end_time, ByteCount data_bytes_max,
+             ByteCount data_bytes_used);
     virtual ~DataPlan();
 
     // get plan name
@@ -68,20 +72,20 @@ class DataPlan {
     virtual base::Time GetEndTime() const;
 
     // get plan max bytes
-    virtual Bytes GetDataBytesMax() const;
+    virtual ByteCount GetDataBytesMax() const;
 
     // get plan used bytes
-    virtual Bytes GetDataBytesUsed() const;
+    virtual ByteCount GetDataBytesUsed() const;
 
     // get local used bytes
-    virtual Bytes GetLocalBytesUsed() const;
+    virtual ByteCount GetLocalBytesUsed() const;
 
     // set local used bytes
     // must be >= 0
-    virtual void SetLocalBytesUsed(Bytes local_bytes_used);
+    virtual void SetLocalBytesUsed(ByteCount local_bytes_used);
 
     // get total used bytes
-    virtual Bytes GetTotalBytesUsed() const;
+    virtual ByteCount GetTotalBytesUsed() const;
 
     // is this an active plan?
     // we define active to mean that the plan is current and not exhausted
@@ -105,6 +109,17 @@ class DataPlan {
     // returns NULL if list is empty or contains no active plans
     static DataPlan* GetActivePlan(const DataPlanList& data_plans);
 
+    // event handler for |service's| local byte counter on |device|
+    // updates active plans in |data_plans| based on the |rx_bytes| and
+    //   |tx_bytes| values gathered during the most recent sample interval
+    // notifies |service_manager| if an active plan is completely consumed
+    // returns true if any plans were updated and false otherwise
+    // |data_plans|, |service|, |service_manager| and |device| must not be NULL
+    static bool OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
+                                    ServiceManager *service_manager,
+                                    Device *device, uint64 rx_bytes,
+                                    uint64 tx_bytes);
+
   private:
     // human-readable plan name
     const std::string name_;
@@ -124,20 +139,20 @@ class DataPlan {
 
     // max bytes available during plan period
     // irrelevant for plans of type kTypeUnlimited
-    const Bytes data_bytes_max_;
+    const ByteCount data_bytes_max_;
 
     // bytes consumed so far during plan period
     // this measurement comes from the carrier API
-    Bytes data_bytes_used_;
+    ByteCount data_bytes_used_;
 
     // local measurement of bytes used since we received |data_bytes_used_|
     // baseline from the carrier API
-    Bytes local_bytes_used_;
+    ByteCount local_bytes_used_;
 
     // our best estimate of total bytes used for this plan
     // carrier baseline (|data_bytes_used_|) +
     // locally measured traffic (|local_bytes_used_|)
-    Bytes total_bytes_used_;
+    ByteCount total_bytes_used_;
 
     // convert plan type enum value to string formatted for libcros
     const char* TypeToLibcrosString(Type type) const;

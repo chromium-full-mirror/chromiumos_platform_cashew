@@ -60,9 +60,9 @@ class ServiceManagerImpl : public ServiceManager,
                                    const DBus::Variant& new_value);
 
     // Service methods
-
-    // a child Service wants us to emit an update about its data plans
     virtual void EmitDataPlansUpdate(const Service& service);
+    virtual void OnDataPlanInactive(const Service& service,
+                                    const DataPlan& plan);
 
   private:
     // D-Bus connection owned by our creator

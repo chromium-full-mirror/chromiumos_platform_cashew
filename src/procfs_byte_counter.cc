@@ -65,8 +65,18 @@ uint64 ProcfsByteCounter::GetRxBytes() const {
   return counter_rx_bytes_;
 }
 
+void ProcfsByteCounter::SetRxBytes(uint64 rx_bytes) {
+  DLOG(INFO) << interface_ << ": SetRxBytes: rx_bytes = " << rx_bytes;
+  counter_rx_bytes_ = rx_bytes;
+}
+
 uint64 ProcfsByteCounter::GetTxBytes() const {
   return counter_tx_bytes_;
+}
+
+void ProcfsByteCounter::SetTxBytes(uint64 tx_bytes) {
+  DLOG(INFO) << interface_ << ": SetTxBytes: tx_bytes = " << tx_bytes;
+  counter_tx_bytes_ = tx_bytes;
 }
 
 void ProcfsByteCounter::SetDelegate(ByteCounterDelegate *delegate) {

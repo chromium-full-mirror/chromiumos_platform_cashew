@@ -23,9 +23,11 @@ class ByteCounter {
 
     // received bytes
     virtual uint64 GetRxBytes() const = 0;
+    virtual void SetRxBytes(uint64 rx_bytes) = 0;
 
     // transmitted bytes
     virtual uint64 GetTxBytes() const = 0;
+    virtual void SetTxBytes(uint64 tx_bytes) = 0;
 
     // set delegate interface that will receive counter updates
     // it's ok to clear this by setting it to NULL
@@ -37,7 +39,7 @@ class ByteCounter {
     static ByteCounter* NewByteCounter(const std::string& interface);
 };
 
-// interface for delegates
+// interface to be implemented by delegates
 class ByteCounterDelegate {
   public:
     virtual ~ByteCounterDelegate() {}

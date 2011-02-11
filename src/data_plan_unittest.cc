@@ -6,8 +6,11 @@
 #include <gtest/gtest.h>
 
 #include "src/data_plan.h"
+#include "src/device_mock.h"
 #include "src/json_reader.h"
 #include "src/policy.h"
+#include "src/service_manager_mock.h"
+#include "src/service_mock.h"
 
 namespace cashew {
 
@@ -15,13 +18,19 @@ namespace cashew {
 class DataPlanTest: public ::testing::Test {
   protected:
     DataPlanTest() : policy_(NULL), current_unlimited_plan_(NULL),
-        current_available_metered_plan_(NULL) {}
+        current_available_metered_plan_(NULL), plan_one_(NULL), plan_two_(NULL),
+        plan_three_(NULL) {}
 
     virtual ~DataPlanTest() {
       EXPECT_TRUE(policy_ == NULL);
       EXPECT_TRUE(current_unlimited_plan_ == NULL);
       EXPECT_TRUE(current_available_metered_plan_ == NULL);
+      EXPECT_TRUE(plan_one_ == NULL);
+      EXPECT_TRUE(plan_two_ == NULL);
+      EXPECT_TRUE(plan_three_ == NULL);
     }
+
+    static const int kBytesPerMegabyte = 1024 * 1024;
 
     virtual void SetUp() {
       EXPECT_TRUE(policy_ == NULL);
@@ -34,8 +43,8 @@ class DataPlanTest: public ::testing::Test {
       base::Time now = base::Time::Now();
       base::Time start_time = now - twelve_hours;
       base::Time end_time = now + twelve_hours;
-      Bytes max_bytes = 0;
-      Bytes used_bytes = 5 * 1024 * 1024;
+      ByteCount max_bytes = 0;
+      ByteCount used_bytes = 5 * kBytesPerMegabyte;
       current_unlimited_plan_ = new(std::nothrow) DataPlan(
           "Current Unlimited Plan", type, now, start_time, end_time, max_bytes,
           used_bytes);
@@ -43,14 +52,37 @@ class DataPlanTest: public ::testing::Test {
 
       EXPECT_TRUE(current_available_metered_plan_ == NULL);
       type = DataPlan::kTypeMeteredFree;
-      max_bytes = 100 * 1024 * 1024;
+      max_bytes = 100 * kBytesPerMegabyte;
       current_available_metered_plan_ = new(std::nothrow) DataPlan(
           "Current Available Metered Plan", type, now, start_time, end_time,
           max_bytes, used_bytes);
       ASSERT_TRUE(current_available_metered_plan_ != NULL);
+
+      EXPECT_TRUE(plan_one_ == NULL);
+      used_bytes = 0;
+      plan_one_ = new(std::nothrow) DataPlan("Plan One", type, now, start_time,
+                                             end_time, max_bytes, used_bytes);
+      ASSERT_TRUE(plan_one_ != NULL);
+
+      EXPECT_TRUE(plan_two_ == NULL);
+      plan_two_ = new(std::nothrow) DataPlan("Plan Two", type, now, start_time,
+                                             end_time, max_bytes, used_bytes);
+      ASSERT_TRUE(plan_two_ != NULL);
+
+      EXPECT_TRUE(plan_three_ == NULL);
+      plan_three_ = new(std::nothrow) DataPlan("Plan Three", type, now,
+                                               start_time, end_time, max_bytes,
+                                               used_bytes);
+      ASSERT_TRUE(plan_three_ != NULL);
     }
 
     virtual void TearDown() {
+      delete plan_three_;
+      plan_three_ = NULL;
+      delete plan_two_;
+      plan_two_ = NULL;
+      delete plan_one_;
+      plan_one_ = NULL;
       delete current_available_metered_plan_;
       current_available_metered_plan_ = NULL;
       delete current_unlimited_plan_;
@@ -78,6 +110,16 @@ class DataPlanTest: public ::testing::Test {
 
     // current available metered plan shared by multiple tests
     DataPlan *current_available_metered_plan_;
+
+    // three metered plans shared by multiple tests
+    DataPlan *plan_one_;
+    DataPlan *plan_two_;
+    DataPlan *plan_three_;
+
+    // mocks
+    ServiceMock service_mock_;
+    ServiceManagerMock service_manager_mock_;
+    DeviceMock device_mock_;
 };
 
 typedef DataPlanTest DataPlanDeathTest;
@@ -285,30 +327,32 @@ TEST_F(DataPlanTest, TotalBytesAfterCtor) {
   // this test uses |current_unlimited_plan_| created in fixture SetUp
   // we expect plan to be initialized with local bytes == 0 and total bytes ==
   // |used_bytes|
-  EXPECT_EQ(5 * 1024 * 1024, current_unlimited_plan_->GetDataBytesUsed());
+  EXPECT_EQ(5 * kBytesPerMegabyte, current_unlimited_plan_->GetDataBytesUsed());
   EXPECT_EQ(0, current_unlimited_plan_->GetLocalBytesUsed());
-  EXPECT_EQ(5 * 1024 * 1024, current_unlimited_plan_->GetTotalBytesUsed());
+  EXPECT_EQ(5 * kBytesPerMegabyte,
+            current_unlimited_plan_->GetTotalBytesUsed());
 }
 
 TEST_F(DataPlanTest, TotalBytesAfterSetLocalBytes) {
   // this test uses |current_unlimited_plan_| created in fixture SetUp
-  Bytes local_bytes = 10 * 1024 * 1024;
+  ByteCount local_bytes = 10 * kBytesPerMegabyte;
   current_unlimited_plan_->SetLocalBytesUsed(local_bytes);
   // we expect that, after we set local bytes, total bytes == data bytes +
   // local bytes
-  EXPECT_EQ(5 * 1024 * 1024, current_unlimited_plan_->GetDataBytesUsed());
+  EXPECT_EQ(5 * kBytesPerMegabyte, current_unlimited_plan_->GetDataBytesUsed());
   EXPECT_EQ(local_bytes, current_unlimited_plan_->GetLocalBytesUsed());
-  EXPECT_EQ(15 * 1024 * 1024, current_unlimited_plan_->GetTotalBytesUsed());
+  EXPECT_EQ(15 * kBytesPerMegabyte,
+            current_unlimited_plan_->GetTotalBytesUsed());
 }
 
 TEST_F(DataPlanTest, TotalBytesAfterOverflow) {
   // this test uses |current_unlimited_plan_| created in fixture SetUp
-  Bytes local_bytes = kint64max;
+  ByteCount local_bytes = kint64max;
   current_unlimited_plan_->SetLocalBytesUsed(local_bytes);
   // we expect that, after we set local bytes to a value that will cause the
   // total bytes computation to overflow, the overflow will be detected and
   // total bytes will be set to kint64max.
-  EXPECT_EQ(5 * 1024 * 1024, current_unlimited_plan_->GetDataBytesUsed());
+  EXPECT_EQ(5 * kBytesPerMegabyte, current_unlimited_plan_->GetDataBytesUsed());
   EXPECT_EQ(local_bytes, current_unlimited_plan_->GetLocalBytesUsed());
   EXPECT_EQ(kint64max, current_unlimited_plan_->GetTotalBytesUsed());
 }
@@ -320,8 +364,8 @@ TEST_F(DataPlanTest, IsActiveCurrentPlan) {
   base::Time now = base::Time::Now();
   base::Time start_time = now - twelve_hours;
   base::Time end_time = now + twelve_hours;
-  Bytes max_bytes = 100 * 1024 * 1024;
-  Bytes used_bytes = 5 * 1024 * 1024;
+  ByteCount max_bytes = 100 * kBytesPerMegabyte;
+  ByteCount used_bytes = 5 * kBytesPerMegabyte;
   DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
                                               end_time, max_bytes, used_bytes);
   ASSERT_TRUE(plan != NULL);
@@ -337,8 +381,8 @@ TEST_F(DataPlanTest, IsActiveFuturePlan) {
   base::Time now = base::Time::Now();
   base::Time start_time = now + twelve_hours;
   base::Time end_time = now + twelve_hours + twelve_hours;
-  Bytes max_bytes = 100 * 1024 * 1024;
-  Bytes used_bytes = 5 * 1024 * 1024;
+  ByteCount max_bytes = 100 * kBytesPerMegabyte;
+  ByteCount used_bytes = 5 * kBytesPerMegabyte;
   DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
                                               end_time, max_bytes, used_bytes);
   ASSERT_TRUE(plan != NULL);
@@ -354,8 +398,8 @@ TEST_F(DataPlanTest, IsActiveExpiredPlan) {
   base::Time now = base::Time::Now();
   base::Time start_time = now - twelve_hours - twelve_hours;
   base::Time end_time = now - twelve_hours;
-  Bytes max_bytes = 100 * 1024 * 1024;
-  Bytes used_bytes = 5 * 1024 * 1024;
+  ByteCount max_bytes = 100 * kBytesPerMegabyte;
+  ByteCount used_bytes = 5 * kBytesPerMegabyte;
   DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
                                               end_time, max_bytes, used_bytes);
   ASSERT_TRUE(plan != NULL);
@@ -371,8 +415,8 @@ TEST_F(DataPlanTest, IsActiveJustStartedPlan) {
   base::Time now = base::Time::Now();
   base::Time start_time = now;
   base::Time end_time = now + twelve_hours;
-  Bytes max_bytes = 100 * 1024 * 1024;
-  Bytes used_bytes = 5 * 1024 * 1024;
+  ByteCount max_bytes = 100 * kBytesPerMegabyte;
+  ByteCount used_bytes = 5 * kBytesPerMegabyte;
   DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
                                               end_time, max_bytes, used_bytes);
   ASSERT_TRUE(plan != NULL);
@@ -388,8 +432,8 @@ TEST_F(DataPlanTest, IsActiveJustExpiredPlan) {
   base::Time now = base::Time::Now();
   base::Time start_time = now - twelve_hours;
   base::Time end_time = now;
-  Bytes max_bytes = 100 * 1024 * 1024;
-  Bytes used_bytes = 5 * 1024 * 1024;
+  ByteCount max_bytes = 100 * kBytesPerMegabyte;
+  ByteCount used_bytes = 5 * kBytesPerMegabyte;
   DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
                                               end_time, max_bytes, used_bytes);
   ASSERT_TRUE(plan != NULL);
@@ -412,8 +456,8 @@ TEST_F(DataPlanTest, IsActiveConsumedMeteredPlan) {
   base::Time now = base::Time::Now();
   base::Time start_time = now - twelve_hours;
   base::Time end_time = now + twelve_hours;
-  Bytes max_bytes = 100 * 1024 * 1024;
-  Bytes used_bytes = 100 * 1024 * 1024;
+  ByteCount max_bytes = 100 * kBytesPerMegabyte;
+  ByteCount used_bytes = 100 * kBytesPerMegabyte;
   DataPlan *plan = new(std::nothrow) DataPlan(name, type, now, start_time,
                                               end_time, max_bytes, used_bytes);
   ASSERT_TRUE(plan != NULL);
@@ -425,7 +469,7 @@ TEST_F(DataPlanTest, IsActiveConsumedMeteredPlan) {
 
 TEST_F(DataPlanTest, IsActiveConsumedLocalMeteredPlan) {
   // this test uses |current_available_metered_plan_| created in fixture SetUp
-  current_available_metered_plan_->SetLocalBytesUsed(95 * 1024 * 1024);
+  current_available_metered_plan_->SetLocalBytesUsed(95 * kBytesPerMegabyte);
   // we expect that a current metered plan that has used bytes < max bytes but
   // is consumed by virtue of local bytes + used bytes being >= max bytes will
   // not be considered active
@@ -437,6 +481,723 @@ TEST_F(DataPlanTest, IsActiveUnlimitedPlan) {
   // we expect that a current unlimited plan will be considered active, even if
   // its total bytes is greater than its (meaningless) max bytes
   EXPECT_TRUE(current_unlimited_plan_->IsActive());
+}
+
+// tests for local byte counter maintenance across plan transitions
+
+// empty list, we should stop the counter
+TEST_F(DataPlanTest, NoActivePlans) {
+  // create empty list
+  DataPlanList data_plans;
+  ASSERT_TRUE(data_plans.empty());
+
+  // set up mock expectations and method return values
+  {
+    testing::InSequence expect_calls_in_order;
+    EXPECT_CALL(device_mock_, ByteCounterRunning())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
+  }
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 25 * kBytesPerMegabyte;
+  uint64 tx_bytes = 25 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  // failure will most likely manifest as violated mock expectation
+  EXPECT_FALSE(result);
+}
+
+// single plan, usage doesn't consume
+TEST_F(DataPlanTest, OnePlanNotConsumed) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+
+  // set up mock expectations and method return values
+  EXPECT_CALL(device_mock_, ByteCounterRunning())
+      .WillRepeatedly(testing::Return(true));
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 25 * kBytesPerMegabyte;
+  uint64 tx_bytes = 25 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_TRUE(plan_one_->IsActive());
+}
+
+// single plan, usage exactly consumes
+TEST_F(DataPlanTest, OnePlanConsumed) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+
+  // set up mock expectations and method return values
+  {
+    testing::InSequence expect_calls_in_order;
+    EXPECT_CALL(device_mock_, ByteCounterRunning())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_one_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(0, 0)).Times(1);
+    EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
+  }
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 50 * kBytesPerMegabyte;
+  uint64 tx_bytes = 50 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_one_->IsActive());
+}
+
+// single plan, usage consumes and leaves overage but no active plan
+TEST_F(DataPlanTest, OnePlanConsumedWithOverage) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+
+  // set up mock expectations and method return values
+  {
+    testing::InSequence expect_calls_in_order;
+    EXPECT_CALL(device_mock_, ByteCounterRunning())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_one_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(10 * kBytesPerMegabyte,
+                                               0)).Times(1);
+    EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
+  }
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 55 * kBytesPerMegabyte;
+  uint64 tx_bytes = 55 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_one_->IsActive());
+}
+
+// two plans, first is inactive because quota consumed and second is active
+// usage is applied to but does not consume second plan
+TEST_F(DataPlanTest, TwoPlansFirstInactiveConsumed) {
+  // create consumed plan and put it in list
+  std::string name = "Consumed Plan";
+  DataPlan::Type type = DataPlan::kTypeMeteredFree;
+  base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+  base::Time now = base::Time::Now();
+  base::Time start_time = now - twelve_hours;
+  base::Time end_time = now + twelve_hours;
+  ByteCount max_bytes = 100 * kBytesPerMegabyte;
+  ByteCount used_bytes = 100 * kBytesPerMegabyte;
+  DataPlan *consumed_plan = new(std::nothrow) DataPlan(name, type, now,
+                                                       start_time, end_time,
+                                                       max_bytes, used_bytes);
+  ASSERT_TRUE(consumed_plan != NULL);
+  DataPlanList data_plans;
+  data_plans.push_back(consumed_plan);
+
+  // use active plan from test fixture
+  data_plans.push_back(plan_two_);
+
+  // set up mock expectations and method return values
+  EXPECT_CALL(device_mock_, ByteCounterRunning())
+      .WillRepeatedly(testing::Return(true));
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 25 * kBytesPerMegabyte;
+  uint64 tx_bytes = 25 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(consumed_plan->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(consumed_plan->GetDataBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(consumed_plan->GetLocalBytesUsed(), 0);
+  EXPECT_EQ(consumed_plan->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(consumed_plan->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_TRUE(plan_two_->IsActive());
+
+  // clean up
+  delete consumed_plan;
+}
+
+// two plans, first is inactive because it has expired and second is active
+// usage is applied to but does not consume second plan
+TEST_F(DataPlanTest, TwoPlansFirstInactiveExpired) {
+  // create expired plan and put it in list
+  std::string name = "Expired Plan";
+  DataPlan::Type type = DataPlan::kTypeMeteredFree;
+  base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+  base::Time now = base::Time::Now();
+  base::Time start_time = now - 2 * twelve_hours;
+  base::Time end_time = now - twelve_hours;
+  ByteCount max_bytes = 100 * kBytesPerMegabyte;
+  ByteCount used_bytes = 0;
+  DataPlan *expired_plan = new(std::nothrow) DataPlan(name, type, now,
+                                                      start_time, end_time,
+                                                      max_bytes, used_bytes);
+  ASSERT_TRUE(expired_plan != NULL);
+  DataPlanList data_plans;
+  data_plans.push_back(expired_plan);
+
+  // use active plan from test fixture
+  data_plans.push_back(plan_two_);
+
+  // set up mock expectations and method return values
+  EXPECT_CALL(device_mock_, ByteCounterRunning())
+      .WillRepeatedly(testing::Return(true));
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 25 * kBytesPerMegabyte;
+  uint64 tx_bytes = 25 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(expired_plan->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(expired_plan->GetDataBytesUsed(), 0);
+  EXPECT_EQ(expired_plan->GetLocalBytesUsed(), 0);
+  EXPECT_EQ(expired_plan->GetTotalBytesUsed(), 0);
+  EXPECT_FALSE(expired_plan->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_TRUE(plan_two_->IsActive());
+
+  // clean up
+  delete expired_plan;
+}
+
+// two plans, first is unlimited and should absorb all usage
+// second plan should remain untouched
+TEST_F(DataPlanTest, TwoPlansFirstUnlimited) {
+  // use plans from test fixture
+  DataPlanList data_plans;
+  data_plans.push_back(current_unlimited_plan_);
+  data_plans.push_back(plan_two_);
+
+  // set up mock expectations and method return values
+  EXPECT_CALL(device_mock_, ByteCounterRunning())
+      .WillRepeatedly(testing::Return(true));
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 100 * kBytesPerMegabyte;
+  uint64 tx_bytes = 100 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(current_unlimited_plan_->GetDataBytesMax(), 0);
+  EXPECT_EQ(current_unlimited_plan_->GetDataBytesUsed(), 5 * kBytesPerMegabyte);
+  EXPECT_EQ(current_unlimited_plan_->GetLocalBytesUsed(),
+            200 * kBytesPerMegabyte);
+  EXPECT_EQ(current_unlimited_plan_->GetTotalBytesUsed(),
+            205 * kBytesPerMegabyte);
+  EXPECT_TRUE(current_unlimited_plan_->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 0);
+  EXPECT_TRUE(plan_two_->IsActive());
+}
+
+// two plans, the first is metered and the second is unlimited
+// usage consumes the first plan, and the overage is absorbed by the second
+TEST_F(DataPlanTest, TwoPlansSecondUnlimited) {
+  // use plans from test fixture
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+  data_plans.push_back(current_unlimited_plan_);
+
+  // set up mock expectations and method return values
+  {
+    testing::InSequence expect_calls_in_order;
+    EXPECT_CALL(device_mock_, ByteCounterRunning())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_one_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(50 * kBytesPerMegabyte,
+                                               0)).Times(1);
+  }
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 75 * kBytesPerMegabyte;
+  uint64 tx_bytes = 75 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_one_->IsActive());
+  EXPECT_EQ(current_unlimited_plan_->GetDataBytesMax(), 0);
+  EXPECT_EQ(current_unlimited_plan_->GetDataBytesUsed(), 5 * kBytesPerMegabyte);
+  EXPECT_EQ(current_unlimited_plan_->GetLocalBytesUsed(),
+            50 * kBytesPerMegabyte);
+  EXPECT_EQ(current_unlimited_plan_->GetTotalBytesUsed(),
+            55 * kBytesPerMegabyte);
+  EXPECT_TRUE(current_unlimited_plan_->IsActive());
+}
+
+// two plans, usage doesn't consume first
+TEST_F(DataPlanTest, TwoPlansFirstNotConsumed) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+  data_plans.push_back(plan_two_);
+
+  // set up mock expectations and method return values
+  EXPECT_CALL(device_mock_, ByteCounterRunning())
+      .WillRepeatedly(testing::Return(true));
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 25 * kBytesPerMegabyte;
+  uint64 tx_bytes = 25 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_TRUE(plan_one_->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 0);
+  EXPECT_TRUE(plan_two_->IsActive());
+}
+
+// two plans, usage consumes first, doesn't consume second
+TEST_F(DataPlanTest, TwoPlansSecondNotConsumed) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+  data_plans.push_back(plan_two_);
+
+  // set up mock expectations and method return values
+  {
+    testing::InSequence expect_calls_in_order;
+    EXPECT_CALL(device_mock_, ByteCounterRunning())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_one_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(50 * kBytesPerMegabyte,
+                                               0)).Times(1);
+  }
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 75 * kBytesPerMegabyte;
+  uint64 tx_bytes = 75 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_one_->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_TRUE(plan_two_->IsActive());
+}
+
+// two plans, usage consumes first, consumes second exactly
+TEST_F(DataPlanTest, TwoPlansSecondConsumed) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+  data_plans.push_back(plan_two_);
+
+  // set up mock expectations and method return values
+  {
+    testing::InSequence expect_calls_in_order;
+    EXPECT_CALL(device_mock_, ByteCounterRunning())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_one_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(100 * kBytesPerMegabyte,
+                                               0)).Times(1);
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_two_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(0, 0)).Times(1);
+    EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
+  }
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 100 * kBytesPerMegabyte;
+  uint64 tx_bytes = 100 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_one_->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_two_->IsActive());
+}
+
+// two plans, usage consumes first, consumes second, with overage
+TEST_F(DataPlanTest, TwoPlansSecondConsumedWithOverage) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+  data_plans.push_back(plan_two_);
+
+  // set up mock expectations and method return values
+  {
+    testing::InSequence expect_calls_in_order;
+    EXPECT_CALL(device_mock_, ByteCounterRunning())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_one_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(110 * kBytesPerMegabyte,
+                                               0)).Times(1);
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_two_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(10 * kBytesPerMegabyte,
+                                               0)).Times(1);
+    EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
+  }
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 105 * kBytesPerMegabyte;
+  uint64 tx_bytes = 105 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_one_->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_two_->IsActive());
+}
+
+// three plans, usage doesn't consume first
+TEST_F(DataPlanTest, ThreePlansFirstNotConsumed) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+  data_plans.push_back(plan_two_);
+  data_plans.push_back(plan_three_);
+
+  // set up mock expectations and method return values
+  EXPECT_CALL(device_mock_, ByteCounterRunning())
+      .WillRepeatedly(testing::Return(true));
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 25 * kBytesPerMegabyte;
+  uint64 tx_bytes = 25 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_TRUE(plan_one_->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 0);
+  EXPECT_TRUE(plan_two_->IsActive());
+  EXPECT_EQ(plan_three_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_three_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_three_->GetLocalBytesUsed(), 0);
+  EXPECT_EQ(plan_three_->GetTotalBytesUsed(), 0);
+  EXPECT_TRUE(plan_three_->IsActive());
+}
+
+// three plans, usage consumes first, doesn't consume second
+TEST_F(DataPlanTest, ThreePlansSecondNotConsumed) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+  data_plans.push_back(plan_two_);
+  data_plans.push_back(plan_three_);
+
+  // set up mock expectations and method return values
+  {
+    testing::InSequence expect_calls_in_order;
+    EXPECT_CALL(device_mock_, ByteCounterRunning())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_one_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(50 * kBytesPerMegabyte,
+                                               0)).Times(1);
+  }
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 75 * kBytesPerMegabyte;
+  uint64 tx_bytes = 75 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_one_->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_TRUE(plan_two_->IsActive());
+  EXPECT_EQ(plan_three_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_three_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_three_->GetLocalBytesUsed(), 0);
+  EXPECT_EQ(plan_three_->GetTotalBytesUsed(), 0);
+  EXPECT_TRUE(plan_three_->IsActive());
+}
+
+// three plans, usage consumes first, consumes second, doesn't consume third
+TEST_F(DataPlanTest, ThreePlansThirdNotConsumed) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+  data_plans.push_back(plan_two_);
+  data_plans.push_back(plan_three_);
+
+  // set up mock expectations and method return values
+  {
+    testing::InSequence expect_calls_in_order;
+    EXPECT_CALL(device_mock_, ByteCounterRunning())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_one_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(150 * kBytesPerMegabyte,
+                                               0)).Times(1);
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_two_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(50 * kBytesPerMegabyte,
+                                               0)).Times(1);
+  }
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 125 * kBytesPerMegabyte;
+  uint64 tx_bytes = 125 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_one_->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_two_->IsActive());
+  EXPECT_EQ(plan_three_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_three_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_three_->GetLocalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_three_->GetTotalBytesUsed(), 50 * kBytesPerMegabyte);
+  EXPECT_TRUE(plan_three_->IsActive());
+}
+
+// three plans, usage consumes first, consumes second, exactly consumes third
+TEST_F(DataPlanTest, ThreePlansThirdConsumed) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+  data_plans.push_back(plan_two_);
+  data_plans.push_back(plan_three_);
+
+  // set up mock expectations and method return values
+  {
+    testing::InSequence expect_calls_in_order;
+    EXPECT_CALL(device_mock_, ByteCounterRunning())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_one_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(200 * kBytesPerMegabyte,
+                                               0)).Times(1);
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_two_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(100 * kBytesPerMegabyte,
+                                               0)).Times(1);
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_three_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(0, 0)).Times(1);
+    EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
+  }
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 150 * kBytesPerMegabyte;
+  uint64 tx_bytes = 150 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_one_->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_two_->IsActive());
+  EXPECT_EQ(plan_three_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_three_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_three_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_three_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_three_->IsActive());
+}
+
+// three plans, usage consumes first, consumes second, consumes third w/ overage
+TEST_F(DataPlanTest, ThreePlansThirdConsumedWithOverage) {
+  DataPlanList data_plans;
+  data_plans.push_back(plan_one_);
+  data_plans.push_back(plan_two_);
+  data_plans.push_back(plan_three_);
+
+  // set up mock expectations and method return values
+  {
+    testing::InSequence expect_calls_in_order;
+    EXPECT_CALL(device_mock_, ByteCounterRunning())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_one_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(210 * kBytesPerMegabyte,
+                                               0)).Times(1);
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_two_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(110 * kBytesPerMegabyte,
+                                               0)).Times(1);
+    EXPECT_CALL(service_manager_mock_,
+                OnDataPlanInactive(testing::Ref(service_mock_),
+                                   testing::Ref(*plan_three_))).Times(1);
+    EXPECT_CALL(device_mock_, ResetByteCounter(10 * kBytesPerMegabyte,
+                                               0)).Times(1);
+    EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
+  }
+
+  // simulate a byte counter update
+  uint64 rx_bytes = 155 * kBytesPerMegabyte;
+  uint64 tx_bytes = 155 * kBytesPerMegabyte;
+  bool result = DataPlan::OnByteCounterUpdate(&data_plans, &service_mock_,
+                                              &service_manager_mock_,
+                                              &device_mock_, rx_bytes,
+                                              tx_bytes);
+
+  // check if test passed
+  EXPECT_TRUE(result);
+  EXPECT_EQ(plan_one_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_one_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_one_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_one_->IsActive());
+  EXPECT_EQ(plan_two_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_two_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_two_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_two_->IsActive());
+  EXPECT_EQ(plan_three_->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_three_->GetDataBytesUsed(), 0);
+  EXPECT_EQ(plan_three_->GetLocalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(plan_three_->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_FALSE(plan_three_->IsActive());
 }
 
 }  // namespace cashew
