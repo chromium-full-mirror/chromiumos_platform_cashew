@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,16 +9,6 @@
 #include "src/service_manager_impl.h"
 
 namespace cashew {
-
-// static
-bool ServiceManager::IsOfflineConnectivityState(ConnectivityState state) {
-  return ServiceManagerImpl::IsOfflineConnectivityState(state);
-}
-
-// static
-bool ServiceManager::IsOnlineConnectivityState(ConnectivityState state) {
-  return ServiceManagerImpl::IsOnlineConnectivityState(state);
-}
 
 // static
 ServiceManager* ServiceManager::NewServiceManager(

@@ -17,19 +17,10 @@ namespace cashew {
 static const char *kFlimflamServiceName = "org.chromium.flimflam";
 
 // Flimflam Service property names
-static const char *kFlimflamServiceConnectivityStateProperty =
-    "ConnectivityState";
 static const char *kFlimflamServiceDeviceProperty = "Device";
 static const char *kFlimflamServiceStateProperty = "State";
 static const char *kFlimflamServiceTypeProperty = "Type";
 static const char *kFlimflamServiceUsageUrlProperty = "Cellular.UsageUrl";
-
-// Flimflam Service on-the-wire ConnectivityState values
-static const char *kFlimflamServiceConnectivityStateUnknown = "unknown";
-static const char *kFlimflamServiceConnectivityStateRestricted = "restricted";
-static const char *kFlimflamServiceConnectivityStateUnrestricted =
-    "unrestricted";
-static const char *kFlimflamServiceConnectivityStateNone = "none";
 
 // Flimflam Service on-the-wire State values
 static const char *kFlimflamServiceStateIdle = "idle";
@@ -37,6 +28,8 @@ static const char *kFlimflamServiceStateCarrier = "carrier";
 static const char *kFlimflamServiceStateAssociation = "association";
 static const char *kFlimflamServiceStateConfiguration = "configuration";
 static const char *kFlimflamServiceStateReady = "ready";
+static const char *kFlimflamServiceStatePortal = "portal";
+static const char *kFlimflamServiceStateOnline = "online";
 static const char *kFlimflamServiceStateDisconnect = "disconnect";
 static const char *kFlimflamServiceStateFailure = "failure";
 static const char *kFlimflamServiceStateActivationFailure =
@@ -82,8 +75,7 @@ ServiceImpl::ServiceImpl(ServiceManager * const parent,
       provider_(NULL), request_in_progress_(false),
       update_timeout_source_(NULL), policy_(NULL),
       is_default_service_(false), get_properties_source_id_(0),
-      retrying_get_properties_(false),
-      connectivity_state_(kConnectivityStateUnknown) {
+      retrying_get_properties_(false) {
   // schedule a GetProperties() call to our Flimflam service path to init state
   // we'll keep trying periodically until we succeed
   // we'll subsequently update this state by monitoring PropertyChanged signals
@@ -174,10 +166,6 @@ bool ServiceImpl::IsDefaultService() const {
   return false;
 }
 
-Service::ConnectivityState ServiceImpl::GetConnectivityState() const {
-  return connectivity_state_;
-}
-
 // Flimflam Service D-Bus Proxy methods
 
 void ServiceImpl::PropertyChanged(const std::string& property_name,
@@ -206,8 +194,6 @@ void ServiceImpl::OnPropertyChanged(const PropertyChangedHandler *handler,
     OnTypeUpdate(new_value.reader().get_string());
   } else if (property_name == kFlimflamServiceUsageUrlProperty) {
     OnUsageUrlUpdate(new_value.reader().get_string());
-  } else if (property_name == kFlimflamServiceConnectivityStateProperty) {
-    OnConnectivityStateUpdate(new_value.reader().get_string());
   } else {
     // we don't care about this property
   }
@@ -331,9 +317,6 @@ void ServiceImpl::OnRequestComplete(const DataPlanProvider *provider,
   bool restricted = false;
   if (root->GetBoolean(kCrosUsageRestrictedProperty, &restricted)) {
     LOG(INFO) << path_ << ": OnRequestComplete: restricted = " << restricted;
-    // TODO(vlaviano): this should probably be combined with flimflam's
-    // ConnectivityState property to arrive at a conclusion.
-
   } else {
     LOG(INFO) << path_ << ": OnRequestComplete: no restricted property";
     // restricted property is optional
@@ -417,35 +400,7 @@ void ServiceImpl::OnDefaultServiceUpdate(bool is_default_service) {
   ReconsiderSendingUsageRequests();
 }
 
-void ServiceImpl::OnFlimflamOnline() {
-  LOG(INFO) << path_ << ": OnFlimflamOnline";
-  ReconsiderSendingUsageRequests();
-}
-
-void ServiceImpl::OnFlimflamOffline() {
-  LOG(INFO) << path_ << ": OnFlimflamOffline";
-  ReconsiderSendingUsageRequests();
-}
-
 // Private methods
-
-// static
-Service::ConnectivityState ServiceImpl::ConnectivityStateFromString(
-    const std::string& connectivity_state) {
-  if (connectivity_state == kFlimflamServiceConnectivityStateUnknown) {
-    return kConnectivityStateUnknown;
-  }
-  if (connectivity_state == kFlimflamServiceConnectivityStateRestricted) {
-    return kConnectivityStateRestricted;
-  }
-  if (connectivity_state == kFlimflamServiceConnectivityStateUnrestricted) {
-    return kConnectivityStateUnrestricted;
-  }
-  if (connectivity_state == kFlimflamServiceConnectivityStateNone) {
-    return kConnectivityStateNone;
-  }
-  return kConnectivityStateUnknown;
-}
 
 // static
 Service::State ServiceImpl::StateFromString(const std::string& state) {
@@ -463,6 +418,12 @@ Service::State ServiceImpl::StateFromString(const std::string& state) {
   }
   if (state == kFlimflamServiceStateReady) {
     return kStateReady;
+  }
+  if (state == kFlimflamServiceStatePortal) {
+    return kStatePortal;
+  }
+  if (state == kFlimflamServiceStateOnline) {
+    return kStateOnline;
   }
   if (state == kFlimflamServiceStateDisconnect) {
     return kStateDisconnect;
@@ -502,19 +463,6 @@ void ServiceImpl::OnDeviceUpdate(const DBus::Path& device_path) {
   }
   LOG(INFO) << path_ << ": OnDeviceUpdate: created device for "
       << device_path;
-}
-
-void ServiceImpl::OnConnectivityStateUpdate(
-    const std::string& connectivity_state) {
-  LOG(INFO) << path_ << ": OnConnectivityStateUpdate: connectivity_state = "
-      << connectivity_state;
-  Service::ConnectivityState new_connectivity_state =
-      ConnectivityStateFromString(connectivity_state);
-  if (connectivity_state_ == new_connectivity_state) {
-    return;
-  }
-  connectivity_state_ = new_connectivity_state;
-  ReconsiderSendingUsageRequests();
 }
 
 void ServiceImpl::OnStateUpdate(const std::string& state) {
@@ -642,16 +590,6 @@ bool ServiceImpl::GetServiceProperties() {
   } else {
     LOG(WARNING) << path_
         << ": GetServiceProperties: no Cellular.UsageUrl property";
-  }
-  // flimflam docs re: ConnectivityState: "This state is currently only
-  // computed for services of type Cellular"
-  it = properties.find(kFlimflamServiceConnectivityStateProperty);
-  if (it != properties.end()) {
-    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
-    OnConnectivityStateUpdate(value.reader().get_string());
-  } else {
-    LOG(WARNING) << path_
-        << ": GetServiceProperties: no ConnectivityState property";
   }
   return true;
 }
@@ -788,18 +726,7 @@ void ServiceImpl::OnCrosUsageErrorResult(const std::string& status) {
 }
 
 bool ServiceImpl::IsConnected() const {
-  if (state_ != kStateReady) {
-    return false;
-  }
-  // cross-check with parent Service Manager's idea of Flimflam global
-  // connectivity state
-  if (ServiceManager::IsOfflineConnectivityState(
-      parent_->GetConnectivityState())) {
-    LOG(WARNING) << path_
-        << ": IsConnected: service manager thinks we're offline";
-    return false;
-  }
-  return true;
+  return (state_ == kStateReady || state_ == kStateOnline);
 }
 
 void ServiceImpl::OnConnected() {
@@ -838,24 +765,12 @@ bool ServiceImpl::ShouldSendUsageRequests() const {
     LOG(INFO) << path_ << ": ShouldSendUsageRequests: no: no usage url";
     return false;
   }
-  if (ServiceManager::IsOfflineConnectivityState(
-      parent_->GetConnectivityState())) {
-    LOG(INFO) << path_
-        << ": ShouldSendUsageRequests: no: flimflam is offline";
-    return false;
-  }
   if (!IsConnected()) {
     LOG(INFO) << path_ << ": ShouldSendUsageRequests: no: not connected";
     return false;
   }
   if (!IsDefaultService()) {
     LOG(INFO) << path_ << ": ShouldSendUsageRequests: no: not default service";
-    return false;
-  }
-  // TODO(vlaviano): this is a blunt way to ensure that we don't count local
-  // traffic if we're already in the restricted pool when cashew starts
-  if (GetConnectivityState() == kConnectivityStateRestricted) {
-    LOG(INFO) << path_ << ": ShouldSendUsageRequests: no: in restricted pool";
     return false;
   }
   if (device_->ByteCounterRunning()) {

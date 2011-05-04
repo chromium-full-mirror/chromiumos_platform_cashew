@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -36,9 +36,6 @@ class ServiceManagerImpl : public ServiceManager,
     virtual const Service* GetService(const std::string& service_path) const;
     virtual void SetCashewServer(CashewServer *cashew_server);
     virtual Service::Type GetDefaultTechnology() const;
-    virtual ConnectivityState GetConnectivityState() const;
-    static bool IsOfflineConnectivityState(ConnectivityState state);
-    static bool IsOnlineConnectivityState(ConnectivityState state);
 
     // Flimflam Manager D-Bus Proxy methods
 
@@ -86,9 +83,6 @@ class ServiceManagerImpl : public ServiceManager,
     // service is the default
     Service *default_cellular_service_;
 
-    // global connectivity state most recently reported by Flimflam
-    ConnectivityState connectivity_state_;
-
     // GetProperties timer glib source id
     // 0 means no source
     guint get_properties_source_id_;
@@ -120,9 +114,6 @@ class ServiceManagerImpl : public ServiceManager,
     // returns true on success and false on failure
     bool GetFlimflamProperties();
 
-    // we've received updated State info from Flimflam
-    void OnStateUpdate(const std::string& new_state_string);
-
     // we've received updated DefaultTechnology info from Flimflam
     void OnDefaultTechnologyUpdate(const std::string& default_technology);
 
@@ -146,16 +137,6 @@ class ServiceManagerImpl : public ServiceManager,
     // NULL |service| is ok and is equivalent to ClearDefaultCellularService
     // no-op if |service| == |default_cellular_service_|
     void SetDefaultCellularService(Service *service);
-
-    // convert connectivity state string to ConnectivityState enum value
-    static ConnectivityState ConnectivityStateFromString(
-        const std::string& state);
-
-    // Flimflam has told us that it has come online
-    void OnFlimflamOnline();
-
-    // Flimflam has told us that it has gone offline
-    void OnFlimflamOffline();
 
     DISALLOW_COPY_AND_ASSIGN(ServiceManagerImpl);
 };

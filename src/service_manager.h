@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -47,23 +47,6 @@ class ServiceManager {
 
     // return our latest info on the current default technology
     virtual Service::Type GetDefaultTechnology() const = 0;
-
-    // valid Flimflam global connectivity state values
-    typedef enum {
-      kConnectivityStateUnknown = 0,
-      kConnectivityStateOffline,
-      kConnectivityStateConnected,
-      kConnectivityStateOnline,
-    } ConnectivityState;
-
-    // return our latest info on Flimflam's global connectivity state
-    virtual ConnectivityState GetConnectivityState() const = 0;
-
-    // does |state| represent an offline state
-    static bool IsOfflineConnectivityState(ConnectivityState state);
-
-    // does |state| represent an online state
-    static bool IsOnlineConnectivityState(ConnectivityState state);
 
     // Service methods
 

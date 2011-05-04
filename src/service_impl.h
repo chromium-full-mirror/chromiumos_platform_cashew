@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -44,7 +44,6 @@ class ServiceImpl : public Service,
     virtual Device* GetDevice() const;
     virtual DBusDataPlanList GetDBusDataPlans() const;
     virtual bool IsDefaultService() const;
-    virtual ConnectivityState GetConnectivityState() const;
 
     // Flimflam Service D-Bus Proxy methods
 
@@ -79,12 +78,6 @@ class ServiceImpl : public Service,
     // we've received an update from our parent about whether or not we're the
     // default service
     virtual void OnDefaultServiceUpdate(bool is_default_service);
-
-    // we've received an update from our parent that Flimflam has come online
-    virtual void OnFlimflamOnline();
-
-    // we've received an update from our parent that Flimflam has gone offline
-    virtual void OnFlimflamOffline();
 
   private:
     // back pointer to our parent ServiceManager
@@ -138,26 +131,15 @@ class ServiceImpl : public Service,
     // and our subsequent timer calls
     bool retrying_get_properties_;
 
-    // Service connectivity state
-    // finer-grained connectivity info applicable when |state_| == kStateReady
-    ConnectivityState connectivity_state_;
-
     // Handler for deferred processing of D-Bus PropertyChanged signals.
     // See comments in service_manager.h
     PropertyChangedHandler property_changed_handler_;
-
-    // convert connectivity state string to ConnectivityState enum value
-    static ConnectivityState ConnectivityStateFromString(
-        const std::string& connectivity_state);
 
     // convert state string to State enum value
     static State StateFromString(const std::string& state);
 
     // we've received updated Device info from Flimflam
     void OnDeviceUpdate(const DBus::Path& device_path);
-
-    // we've received updated Connectivity State info from Flimflam
-    void OnConnectivityStateUpdate(const std::string& connectivity_state);
 
     // we've received updated State info from Flimflam
     void OnStateUpdate(const std::string& state);

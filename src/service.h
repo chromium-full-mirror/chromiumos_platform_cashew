@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -42,6 +42,8 @@ class Service {
       kStateAssociation,
       kStateConfiguration,
       kStateReady,
+      kStatePortal,
+      kStateOnline,
       kStateDisconnect,
       kStateFailure,
       kStateActivationFailure,
@@ -78,16 +80,6 @@ class Service {
     // do we think that we're the default service at this time?
     virtual bool IsDefaultService() const = 0;
 
-    typedef enum {
-      kConnectivityStateUnknown = 0,
-      kConnectivityStateRestricted,
-      kConnectivityStateUnrestricted,
-      kConnectivityStateNone,
-    } ConnectivityState;
-
-    // get connectivity state for this service
-    virtual ConnectivityState GetConnectivityState() const = 0;
-
     // Device methods
 
     // we've received updated Cellular.Carrier info from our child Device
@@ -101,12 +93,6 @@ class Service {
     // we've received an update from our parent about whether or not we're the
     // default service
     virtual void OnDefaultServiceUpdate(bool is_default_service) = 0;
-
-    // we've received an update from our parent that Flimflam has come online
-    virtual void OnFlimflamOnline() = 0;
-
-    // we've received an update from our parent that Flimflam has gone offline
-    virtual void OnFlimflamOffline() = 0;
 
     // factory
     static Service* NewService(ServiceManager * const parent,

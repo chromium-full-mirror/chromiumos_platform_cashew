@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,12 +21,9 @@ class ServiceMock : public Service {
     MOCK_CONST_METHOD0(GetDevice, Device*());
     MOCK_CONST_METHOD0(GetDBusDataPlans, DBusDataPlanList());
     MOCK_CONST_METHOD0(IsDefaultService, bool());
-    MOCK_CONST_METHOD0(GetConnectivityState, Service::ConnectivityState());
     MOCK_METHOD1(OnCarrierUpdate, void(const std::string& carrier));
     MOCK_METHOD2(OnByteCounterUpdate, void(uint64 rx_bytes, uint64 tx_bytes));
     MOCK_METHOD1(OnDefaultServiceUpdate, void(bool is_default_service));
-    MOCK_METHOD0(OnFlimflamOnline, void());
-    MOCK_METHOD0(OnFlimflamOffline, void());
 };
 
 }  // namespace cashew

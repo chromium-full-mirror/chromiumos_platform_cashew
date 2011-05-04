@@ -20,11 +20,6 @@ static const char *kDefaultTechnologyProperty = "DefaultTechnology";
 static const char *kServicesProperty = "Services";
 static const char *kStateProperty = "State";
 
-// Flimflam on-the-wire State values
-static const char *kFlimflamStateOffline = "offline";
-static const char *kFlimflamStateConnected = "connected";
-static const char *kFlimflamStateOnline = "online";
-
 // Flimflam service types
 static const char *kTypeCellular = "cellular";
 
@@ -40,7 +35,6 @@ ServiceManagerImpl::ServiceManagerImpl(DBus::Connection& connection,  // NOLINT
       connection_(connection), main_loop_(CHECK_NOTNULL(main_loop)),
       cashew_server_(NULL), default_technology_(Service::kTypeUnknown),
       default_cellular_service_(NULL),
-      connectivity_state_(kConnectivityStateUnknown),
       get_properties_source_id_(0), retrying_get_properties_(false) {
   // schedule a GetProperties() call to Flimflam to init our state
   // we'll keep trying periodically until we succeed
@@ -80,31 +74,6 @@ void ServiceManagerImpl::SetCashewServer(CashewServer *cashew_server) {
 
 Service::Type ServiceManagerImpl::GetDefaultTechnology() const {
   return default_technology_;
-}
-
-ServiceManager::ConnectivityState ServiceManagerImpl::GetConnectivityState()
-    const {
-  return connectivity_state_;
-}
-
-// static
-bool ServiceManagerImpl::IsOfflineConnectivityState(
-    ServiceManager::ConnectivityState state) {
-  if (state == kConnectivityStateUnknown ||
-      state == kConnectivityStateOffline) {
-    return true;
-  }
-  return false;
-}
-
-// static
-bool ServiceManagerImpl::IsOnlineConnectivityState(
-    ServiceManager::ConnectivityState state) {
-  if (state == kConnectivityStateConnected ||
-      state == kConnectivityStateOnline) {
-    return true;
-  }
-  return false;
 }
 
 // Flimflam Manager D-Bus Proxy methods
@@ -147,8 +116,6 @@ void ServiceManagerImpl::OnPropertyChanged(
     DBus::MessageIter reader = new_value.reader();
     reader >> paths;
     OnServicesUpdate(paths);
-  } else if (property_name == kStateProperty) {
-    OnStateUpdate(new_value.reader().get_string());
   } else {
     // we don't care about this property
   }
@@ -267,29 +234,7 @@ bool ServiceManagerImpl::GetFlimflamProperties() {
   } else {
     LOG(WARNING) << "GetFlimflamProperties: no Services property";
   }
-  it = properties.find(kStateProperty);
-  if (it != properties.end()) {
-    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
-    StateChanged(value.reader().get_string());
-  } else {
-    LOG(WARNING) << "GetFlimflamProperties: no State property";
-  }
   return true;
-}
-
-void ServiceManagerImpl::OnStateUpdate(const std::string& new_state_string) {
-  LOG(INFO) << "OnStateUpdate: new_state = " << new_state_string;
-  ConnectivityState old_state = connectivity_state_;
-  connectivity_state_ = ConnectivityStateFromString(new_state_string);
-  // see if we're coming online or going offline
-  // NOTE: we consider "unknown" to be offline
-  if (IsOfflineConnectivityState(old_state) &&
-      IsOnlineConnectivityState(connectivity_state_)) {
-    OnFlimflamOnline();
-  } else if (IsOnlineConnectivityState(old_state) &&
-      IsOfflineConnectivityState(connectivity_state_)) {
-    OnFlimflamOffline();
-  }
 }
 
 void ServiceManagerImpl::OnDefaultTechnologyUpdate(
@@ -419,43 +364,6 @@ void ServiceManagerImpl::SetDefaultCellularService(Service *service) {
     DCHECK(!service->IsDefaultService());
     service->OnDefaultServiceUpdate(true);
     default_cellular_service_ = service;
-  }
-}
-
-// static
-ServiceManager::ConnectivityState
-ServiceManagerImpl::ConnectivityStateFromString(const std::string& state) {
-  if (state == kFlimflamStateOffline) {
-    return kConnectivityStateOffline;
-  }
-  if (state == kFlimflamStateConnected) {
-    return kConnectivityStateConnected;
-  }
-  if (state == kFlimflamStateOnline) {
-    return kConnectivityStateOnline;
-  }
-  return kConnectivityStateUnknown;
-}
-
-void ServiceManagerImpl::OnFlimflamOnline() {
-  LOG(INFO) << "OnFlimflamOnline";
-  // notify our child services
-  ServiceMap::iterator it;
-  for (it = services_.begin(); it != services_.end(); ++it) {
-    Service *service = static_cast<Service*>(it->second);
-    DCHECK(service != NULL);
-    service->OnFlimflamOnline();
-  }
-}
-
-void ServiceManagerImpl::OnFlimflamOffline() {
-  LOG(INFO) << "OnFlimflamOffline";
-  // notify our child services
-  ServiceMap::iterator it;
-  for (it = services_.begin(); it != services_.end(); ++it) {
-    Service *service = static_cast<Service*>(it->second);
-    DCHECK(service != NULL);
-    service->OnFlimflamOffline();
   }
 }
 
