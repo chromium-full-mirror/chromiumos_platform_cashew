@@ -4,7 +4,7 @@
 
 #include "src/data_plan_provider.h"
 
-#include <base/scoped_ptr.h>
+#include <base/memory/scoped_ptr.h>
 #include <glog/logging.h>
 
 #include "src/json_reader.h"

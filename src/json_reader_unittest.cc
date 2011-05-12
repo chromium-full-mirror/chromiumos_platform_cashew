@@ -6,7 +6,7 @@
 // modified to add 64-bit int support and to pass cpplint
 // TODO(vlaviano): upstream this and pin cros to a later version of libchrome
 
-#include <base/scoped_ptr.h>
+#include <base/memory/scoped_ptr.h>
 #include <base/string_piece.h>
 #include <base/utf_string_conversions.h>
 #include <gtest/gtest.h>

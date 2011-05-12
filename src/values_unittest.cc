@@ -8,7 +8,7 @@
 
 #include <limits>
 
-#include <base/scoped_ptr.h>  // NOLINT
+#include <base/memory/scoped_ptr.h>  // NOLINT
 #include <base/string16.h>  // NOLINT
 #include <base/utf_string_conversions.h>  // NOLINT
 #include <base/values.h>  // NOLINT

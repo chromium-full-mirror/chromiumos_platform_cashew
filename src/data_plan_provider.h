@@ -9,7 +9,7 @@
 #include <vector>
 
 #include <base/basictypes.h>  // NOLINT
-#include <base/scoped_ptr.h>  // NOLINT
+#include <base/memory/scoped_ptr.h>  // NOLINT
 
 #include "src/http_fetcher.h"
 #include "src/values.h"
