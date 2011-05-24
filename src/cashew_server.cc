@@ -1,4 +1,4 @@
-// Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -35,11 +35,11 @@ CashewServer::~CashewServer() {
 
 DBusDataPlanList CashewServer::GetDataPlans(const std::string& service_path,
                                             DBus::Error& error) {  // NOLINT
-  DLOG(INFO) << "GetDataPlans: service = " << service_path;
+  LOG(INFO) << "GetDataPlans: service = " << service_path;
   DBusDataPlanList dbus_data_plans;
   const Service *service = service_manager_->GetService(service_path);
   if (service == NULL) {
-    DLOG(WARNING) << "GetDataPlans: unknown service: " << service_path;
+    LOG(WARNING) << "GetDataPlans: unknown service: " << service_path;
     error.set(kCashewErrorServiceUnknown, service_path.c_str());
     DCHECK(dbus_data_plans.empty());
     return dbus_data_plans;
@@ -50,10 +50,10 @@ DBusDataPlanList CashewServer::GetDataPlans(const std::string& service_path,
 
 void CashewServer::RequestDataPlansUpdate(const std::string& service_path,
                                           DBus::Error& error) {  // NOLINT
-  DLOG(INFO) <<  "RequestDataPlansUpdate: service = " << service_path;
+  LOG(INFO) <<  "RequestDataPlansUpdate: service = " << service_path;
   const Service *service = service_manager_->GetService(service_path);
   if (service == NULL) {
-    DLOG(WARNING) << "RequestDataPlansUpdate: unknown service: "
+    LOG(WARNING) << "RequestDataPlansUpdate: unknown service: "
         << service_path;
     error.set(kCashewErrorServiceUnknown, service_path.c_str());
     return;
@@ -67,7 +67,7 @@ void CashewServer::RequestDataPlansUpdate(const std::string& service_path,
 }
 
 bool CashewServer::IsAlive(DBus::Error& error) {  // NOLINT
-  DLOG(INFO) << "IsAlive";
+  LOG(INFO) << "IsAlive";
   return true;
 }
 
@@ -80,7 +80,7 @@ void CashewServer::EmitDataPlansUpdate(const Service& service) {
 // Private methods
 
 void CashewServer::EmitDataPlansUpdateSignal(const Service& service) {
-  DLOG(INFO) << "EmitDataPlansUpdateSignal: service = " << service.GetPath();
+  LOG(INFO) << "EmitDataPlansUpdateSignal: service = " << service.GetPath();
   DBusDataPlanList dbus_data_plans = service.GetDBusDataPlans();
 
   // send out the signal

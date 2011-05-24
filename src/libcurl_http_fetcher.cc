@@ -1,4 +1,4 @@
-// Copyright (c) 2009 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -88,7 +88,7 @@ void LibcurlHttpFetcher::ResumeTransfer(const std::string& url) {
 
 // Begins the transfer, which must not have already been started.
 void LibcurlHttpFetcher::BeginTransfer(const std::string& url) {
-  DLOG(INFO) << "BeginTransfer";
+  LOG(INFO) << "BeginTransfer";
   transfer_size_ = -1;
   bytes_downloaded_ = 0;
   resume_offset_ = 0;
@@ -99,7 +99,7 @@ void LibcurlHttpFetcher::BeginTransfer(const std::string& url) {
 }
 
 void LibcurlHttpFetcher::TerminateTransfer() {
-  DLOG(INFO) << "TerminateTransfer";
+  LOG(INFO) << "TerminateTransfer";
   CleanUp();
 }
 
@@ -155,7 +155,7 @@ void LibcurlHttpFetcher::CurlPerformOnce() {
 
 size_t LibcurlHttpFetcher::LibcurlWrite(void *ptr, size_t size, size_t nmemb) {
   GetHttpResponseCode();
-  DLOG(INFO) << "LibcurlWrite";
+  LOG(INFO) << "LibcurlWrite";
   {
     double transfer_size_double;
     CHECK_EQ(curl_easy_getinfo(curl_handle_,
@@ -173,14 +173,14 @@ size_t LibcurlHttpFetcher::LibcurlWrite(void *ptr, size_t size, size_t nmemb) {
 }
 
 void LibcurlHttpFetcher::Pause() {
-  DLOG(INFO) << "Pause";
+  LOG(INFO) << "Pause";
   CHECK(curl_handle_);
   CHECK(transfer_in_progress_);
   CHECK_EQ(curl_easy_pause(curl_handle_, CURLPAUSE_ALL), CURLE_OK);
 }
 
 void LibcurlHttpFetcher::Unpause() {
-  DLOG(INFO) << "Unpause";
+  LOG(INFO) << "Unpause";
   CHECK(curl_handle_);
   CHECK(transfer_in_progress_);
   CHECK_EQ(curl_easy_pause(curl_handle_, CURLPAUSE_CONT), CURLE_OK);
@@ -278,14 +278,14 @@ bool LibcurlHttpFetcher::FDCallback(GIOChannel *source,
 }
 
 gboolean LibcurlHttpFetcher::RetryTimeoutCallback() {
-  DLOG(INFO) << "RetryTimeoutCallback";
+  LOG(INFO) << "RetryTimeoutCallback";
   ResumeTransfer(url_);
   CurlPerformOnce();
   return FALSE;  // Don't have glib auto call this callback again
 }
 
 gboolean LibcurlHttpFetcher::TimeoutCallback() {
-  DLOG(INFO) << "TimeoutCallback";
+  LOG(INFO) << "TimeoutCallback";
   // We always return true, even if we don't want glib to call us back.
   // We will remove the event source separately if we don't want to
   // be called back.
@@ -333,7 +333,7 @@ void LibcurlHttpFetcher::GetHttpResponseCode() {
   if (result == CURLE_OK) {
     http_response_code_ = static_cast<int>(http_response_code);
   } else {
-    DLOG(WARNING) << "GetHttpResponseCode: curl_easy_getinfo failed: "
+    LOG(WARNING) << "GetHttpResponseCode: curl_easy_getinfo failed: "
         << curl_easy_strerror(result);
   }
 }

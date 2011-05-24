@@ -1,4 +1,4 @@
-// Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,7 +33,7 @@ const std::string& DataPlanProvider::GetUsageUrl() const {
 }
 
 void DataPlanProvider::SetUsageUrl(const std::string& usage_url) {
-  DLOG(INFO) << carrier_ << ": SetUsageUrl: url = " << usage_url;
+  LOG(INFO) << carrier_ << ": SetUsageUrl: url = " << usage_url;
   if (usage_url_ != usage_url) {
     usage_url_ = usage_url;
     CancelPendingRequests();
@@ -41,7 +41,7 @@ void DataPlanProvider::SetUsageUrl(const std::string& usage_url) {
 }
 
 void DataPlanProvider::SetDelegate(DataPlanProviderDelegate *delegate) {
-  DLOG(INFO) << carrier_ << ": SetDelegate";
+  LOG(INFO) << carrier_ << ": SetDelegate";
   delegate_ = delegate;
   if (delegate_ == NULL) {
     CancelPendingRequests();
@@ -50,21 +50,21 @@ void DataPlanProvider::SetDelegate(DataPlanProviderDelegate *delegate) {
 
 bool DataPlanProvider::RequestUsageUpdate() {
   if (usage_url_.empty()) {
-    DLOG(WARNING) << carrier_ << ": RequestUsageUpdate: no usage url";
+    LOG(WARNING) << carrier_ << ": RequestUsageUpdate: no usage url";
     return false;
   }
   if (delegate_ == NULL) {
-    DLOG(WARNING) << carrier_ << ": RequestUsageUpdate: no delegate";
+    LOG(WARNING) << carrier_ << ": RequestUsageUpdate: no delegate";
     return false;
   }
   if (request_in_progress_) {
-    DLOG(INFO) << carrier_
+    LOG(INFO) << carrier_
         << ": RequestUsageUpdate: request already in progress";
     // we'll satisfy this request with the result from the in-flight one
     return true;
   }
   DCHECK(response_buffer_.empty());
-  DLOG(INFO) << carrier_ << ": RequestUsageUpdate: initiating request";
+  LOG(INFO) << carrier_ << ": RequestUsageUpdate: initiating request";
   request_in_progress_ = true;
   fetcher_->BeginTransfer(usage_url_);
   return true;
@@ -78,11 +78,11 @@ void DataPlanProvider::ReceivedBytes(HttpFetcher *fetcher, const char *bytes,
   DCHECK(bytes != NULL);
   DCHECK_GE(length, 0);
   if (fetcher != fetcher_) {
-    DLOG(WARNING) << carrier_ << ": ReceivedBytes: wrong fetcher";
+    LOG(WARNING) << carrier_ << ": ReceivedBytes: wrong fetcher";
     return;
   }
   DCHECK(request_in_progress_);
-  DLOG(INFO) << carrier_ << ": ReceivedBytes: length = " << length;
+  LOG(INFO) << carrier_ << ": ReceivedBytes: length = " << length;
   response_buffer_.reserve(response_buffer_.size() + length);
   response_buffer_.insert(response_buffer_.end(), bytes, bytes + length);
 }
@@ -91,12 +91,12 @@ void DataPlanProvider::TransferComplete(HttpFetcher *fetcher,
                                         bool successful) {
   DCHECK(fetcher != NULL);
   if (fetcher != fetcher_) {
-    DLOG(WARNING) << carrier_ << ": TransferComplete: wrong fetcher";
+    LOG(WARNING) << carrier_ << ": TransferComplete: wrong fetcher";
     return;
   }
   DCHECK(request_in_progress_);
   DCHECK(delegate_ != NULL);
-  DLOG(INFO) << carrier_ << ": TransferComplete: result = " << successful;
+  LOG(INFO) << carrier_ << ": TransferComplete: result = " << successful;
   if (!successful) {
     LOG(WARNING) << carrier_ << ": TransferComplete: failed: response code = "
         << fetcher_->http_response_code();
@@ -129,7 +129,7 @@ void DataPlanProvider::TransferComplete(HttpFetcher *fetcher,
     delegate_->OnRequestComplete(this, false, NULL);
     return;
   }
-  DLOG(INFO) << carrier_ << ": TransferComplete: successfully parsed json";
+  LOG(INFO) << carrier_ << ": TransferComplete: successfully parsed json";
   delegate_->OnRequestComplete(this, true, parsed_usage_update.get());
 }
 

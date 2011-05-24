@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,7 +31,7 @@ typedef void (*SignalHandler)(Signal signal);
 int InstallSignalHandler(const Signal signal,
                          const SignalHandler signal_handler,
                          const sigset_t& mask) {
-  DLOG(INFO) << "installing handler for signal " << signal;
+  LOG(INFO) << "installing handler for signal " << signal;
   struct sigaction action;
   memset(&action, 0, sizeof(action));
   action.sa_handler = signal_handler;
@@ -45,7 +45,7 @@ static CashewServer *server = NULL;
 static ServiceManager *service_manager = NULL;
 
 static void OnSignal(int signal) {
-  DLOG(INFO) << "received signal " << signal;
+  LOG(INFO) << "received signal " << signal;
   if (main_loop != NULL) {
     // TODO(vlaviano): g_idle_add a callback to quit the main loop instead of
     // doing it directly here to remove some low severity races
@@ -81,7 +81,7 @@ int InstallSignalHandlers() {
 // should not be called while event loop is running
 static void CleanUpForExit() {
   DCHECK(main_loop == NULL || !g_main_loop_is_running(main_loop));
-  DLOG(INFO) << "cleaning up";
+  LOG(INFO) << "cleaning up";
   delete server;
   server = NULL;
   delete service_manager;
@@ -105,7 +105,7 @@ int main(int argc, char *argv[]) {
   google::InstallFailureSignalHandler();
   LOG(INFO) << PACKAGE_STRING;
 
-  DLOG(INFO) << "creating main loop";
+  LOG(INFO) << "creating main loop";
   cashew::main_loop = g_main_loop_new(NULL, false);
   if (cashew::main_loop == NULL) {
     LOG(ERROR) << "couldn't create main loop";
@@ -113,7 +113,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  DLOG(INFO) << "creating dbus dispatcher";
+  LOG(INFO) << "creating dbus dispatcher";
   cashew::dispatcher = new(std::nothrow) DBus::Glib::BusDispatcher();
   if (cashew::dispatcher == NULL) {
     LOG(ERROR) << "couldn't create dbus dispatcher";
@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
   DBus::default_dispatcher = cashew::dispatcher;
   cashew::dispatcher->attach(NULL);
 
-  DLOG(INFO) << "creating service manager";
+  LOG(INFO) << "creating service manager";
   DBus::Connection client_conn = DBus::Connection::SystemBus();
   client_conn.set_timeout(cashew::kDBusConnectionTimeoutMilliseconds);
   cashew::service_manager = cashew::ServiceManager::NewServiceManager(
@@ -134,7 +134,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  DLOG(INFO) << "creating cashew server";
+  LOG(INFO) << "creating cashew server";
   // TODO(vlaviano): can we share a single conn for client and server roles?
   DBus::Connection server_conn = DBus::Connection::SystemBus();
   server_conn.request_name(cashew::CashewServer::kServiceName);
@@ -153,9 +153,9 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  DLOG(INFO) << "entering event loop";
+  LOG(INFO) << "entering event loop";
   g_main_loop_run(cashew::main_loop);
-  DLOG(INFO) << "exited event loop";
+  LOG(INFO) << "exited event loop";
   cashew::CleanUpForExit();
   exit(EXIT_SUCCESS);
 }

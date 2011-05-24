@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -59,7 +59,7 @@ ServiceManagerImpl::~ServiceManagerImpl() {
   DeleteServices(&services_);
   if (get_properties_source_id_ != 0 &&
       !g_source_remove(get_properties_source_id_)) {
-    DLOG(WARNING) << "dtor: g_source_remove failed";
+    LOG(WARNING) << "dtor: g_source_remove failed";
   }
 }
 
@@ -74,7 +74,7 @@ const Service* ServiceManagerImpl::GetService(const std::string& service_path)
 }
 
 void ServiceManagerImpl::SetCashewServer(CashewServer *cashew_server) {
-  DLOG(INFO) << "SetCashewServer";
+  LOG(INFO) << "SetCashewServer";
   cashew_server_ = cashew_server;
 }
 
@@ -111,7 +111,7 @@ bool ServiceManagerImpl::IsOnlineConnectivityState(
 
 void ServiceManagerImpl::PropertyChanged(const std::string& property_name,
                                          const DBus::Variant& new_value) {
-  DLOG(INFO) << "PropertyChanged: property_name = " << property_name;
+  LOG(INFO) << "PropertyChanged: property_name = " << property_name;
   // Queue a tuple representing this signal for later processing from the glib
   // main loop.  We do this to avoid libdbus-c++ deadlocks that can occur when
   // sending a dbus message from within a dbus callback like this one.
@@ -120,7 +120,7 @@ void ServiceManagerImpl::PropertyChanged(const std::string& property_name,
 }
 
 void ServiceManagerImpl::StateChanged(const std::string& new_state_string) {
-  DLOG(INFO) << "StateChanged: new_state_string = " << new_state_string;
+  LOG(INFO) << "StateChanged: new_state_string = " << new_state_string;
   // Queue a tuple representing this signal for later processing from the glib
   // main loop. See comments in PropertyChanged above.
   DBus::Variant new_value;
@@ -138,7 +138,7 @@ void ServiceManagerImpl::OnPropertyChanged(
                                           const std::string& property_name,
                                           const DBus::Variant& new_value) {
   DCHECK(handler == &property_changed_handler_);
-  DLOG(INFO) << "OnPropertyChanged: property_name = " << property_name;
+  LOG(INFO) << "OnPropertyChanged: property_name = " << property_name;
   if (property_name == kDefaultTechnologyProperty) {
     OnDefaultTechnologyUpdate(new_value.reader().get_string());
   } else if (property_name == kServicesProperty) {
@@ -157,9 +157,9 @@ void ServiceManagerImpl::OnPropertyChanged(
 // Service methods
 
 void ServiceManagerImpl::EmitDataPlansUpdate(const Service& service) {
-  DLOG(INFO) << "EmitDataPlansUpdate: service = " << service.GetPath();
+  LOG(INFO) << "EmitDataPlansUpdate: service = " << service.GetPath();
   if (cashew_server_ == NULL) {
-    DLOG(WARNING) << "EmitDataPlansUpdate: no Cashew server";
+    LOG(WARNING) << "EmitDataPlansUpdate: no Cashew server";
     return;
   }
   cashew_server_->EmitDataPlansUpdate(service);
@@ -167,7 +167,7 @@ void ServiceManagerImpl::EmitDataPlansUpdate(const Service& service) {
 
 void ServiceManagerImpl::OnDataPlanInactive(const Service& service,
                                             const DataPlan& plan) {
-  DLOG(INFO) << "OnDataPlanInactive: service = " << service.GetPath()
+  LOG(INFO) << "OnDataPlanInactive: service = " << service.GetPath()
       << ", plan = " << plan.GetName();
   DCHECK(!plan.IsActive());
   // TODO(vlaviano): hook for future use
@@ -181,7 +181,7 @@ void ServiceManagerImpl::DeleteServices(ServiceMap *service_map) {
   while (!service_map->empty()) {
     const std::string& path =
         static_cast<std::string>(service_map->begin()->first);
-    DLOG(INFO) << "DeleteServices: deleting service: " << path;
+    LOG(INFO) << "DeleteServices: deleting service: " << path;
     Service *service = static_cast<Service *>(service_map->begin()->second);
     DCHECK(service != NULL);
     DCHECK(service != default_cellular_service_);
@@ -200,7 +200,7 @@ gboolean ServiceManagerImpl::StaticGetFlimflamPropertiesCallback(
   DCHECK_NE(service_manager->get_properties_source_id_, 0);
   if (!service_manager->GetFlimflamProperties()) {
     // call failed, so try again later
-    DLOG(WARNING) << "StaticGetFlimflamPropertiesCallback: "
+    LOG(WARNING) << "StaticGetFlimflamPropertiesCallback: "
         << "GetFlimflamProperties failed, will retry in "
         << kGetFlimflamPropertiesIntervalSeconds << " secs";
     // if we've arrived here from our first g_idle_add call, set up a timer
@@ -229,7 +229,7 @@ gboolean ServiceManagerImpl::StaticGetFlimflamPropertiesCallback(
 }
 
 bool ServiceManagerImpl::GetFlimflamProperties() {
-  DLOG(INFO) << "GetFlimflamProperties";
+  LOG(INFO) << "GetFlimflamProperties";
   PropertyMap properties;
   // dbus-c++ throws exceptions
   // invoke the "Existing Non-conformant Code" clause of the style guide and
@@ -245,7 +245,7 @@ bool ServiceManagerImpl::GetFlimflamProperties() {
     LOG(WARNING) << "GetFlimflamProperties: GetProperties() -> Exception";
     return false;
   }
-  DLOG(INFO) << "GetFlimflamProperties: Received " << properties.size()
+  LOG(INFO) << "GetFlimflamProperties: Received " << properties.size()
       << " properties";
 
   // grab the properties in which we're interested
@@ -254,7 +254,7 @@ bool ServiceManagerImpl::GetFlimflamProperties() {
     const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
     OnDefaultTechnologyUpdate(value.reader().get_string());
   } else {
-    DLOG(WARNING) << "GetFlimflamProperties: no DefaultTechnology property";
+    LOG(WARNING) << "GetFlimflamProperties: no DefaultTechnology property";
   }
   it = properties.find(kServicesProperty);
   if (it != properties.end()) {
@@ -265,20 +265,20 @@ bool ServiceManagerImpl::GetFlimflamProperties() {
     reader >> paths;
     OnServicesUpdate(paths);
   } else {
-    DLOG(WARNING) << "GetFlimflamProperties: no Services property";
+    LOG(WARNING) << "GetFlimflamProperties: no Services property";
   }
   it = properties.find(kStateProperty);
   if (it != properties.end()) {
     const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
     StateChanged(value.reader().get_string());
   } else {
-    DLOG(WARNING) << "GetFlimflamProperties: no State property";
+    LOG(WARNING) << "GetFlimflamProperties: no State property";
   }
   return true;
 }
 
 void ServiceManagerImpl::OnStateUpdate(const std::string& new_state_string) {
-  DLOG(INFO) << "OnStateUpdate: new_state = " << new_state_string;
+  LOG(INFO) << "OnStateUpdate: new_state = " << new_state_string;
   ConnectivityState old_state = connectivity_state_;
   connectivity_state_ = ConnectivityStateFromString(new_state_string);
   // see if we're coming online or going offline
@@ -294,7 +294,7 @@ void ServiceManagerImpl::OnStateUpdate(const std::string& new_state_string) {
 
 void ServiceManagerImpl::OnDefaultTechnologyUpdate(
     const std::string& default_technology) {
-  DLOG(INFO) << "OnDefaultTechnologyUpdate: default technology = "
+  LOG(INFO) << "OnDefaultTechnologyUpdate: default technology = "
       << default_technology;
   default_technology_ = Service::TypeFromString(default_technology);
   if (default_technology_ == Service::kTypeUnknown) {
@@ -322,7 +322,7 @@ void ServiceManagerImpl::OnServicesUpdate(const ServicePathList& paths) {
       + "_";
 
   // Walk paths in this update and see if they're new to us
-  DLOG(INFO) << "OnServicesUpdate: " << paths.size() << " service paths";
+  LOG(INFO) << "OnServicesUpdate: " << paths.size() << " service paths";
   ServicePathList::const_iterator it;
   for (it = paths.begin(); it != paths.end(); ++it) {
     const DBus::Path& path = *it;
@@ -370,7 +370,7 @@ void ServiceManagerImpl::OnServicesUpdate(const ServicePathList& paths) {
 }
 
 void ServiceManagerImpl::OnNewService(const DBus::Path& path) {
-  DLOG(INFO) << "OnNewService: " << path;
+  LOG(INFO) << "OnNewService: " << path;
   DCHECK(GetService(path) == NULL);
   Service *service = Service::NewService(this, connection_, path);
   if (service == NULL) {
@@ -381,7 +381,7 @@ void ServiceManagerImpl::OnNewService(const DBus::Path& path) {
 }
 
 void ServiceManagerImpl::OnDefaultServiceUpdate(const DBus::Path *path) {
-  DLOG(INFO) << "OnDefaultServiceUpdate: new default service = "
+  LOG(INFO) << "OnDefaultServiceUpdate: new default service = "
       << ((path == NULL) ? "None" : *path);
   // check if new default service path (if any) corresponds to one of our
   // cellular services
@@ -397,7 +397,7 @@ void ServiceManagerImpl::OnDefaultServiceUpdate(const DBus::Path *path) {
 }
 
 void ServiceManagerImpl::ClearDefaultCellularService() {
-  DLOG(INFO) << "ClearDefaultCellularService";
+  LOG(INFO) << "ClearDefaultCellularService";
   if (default_cellular_service_ != NULL) {
     DCHECK(default_cellular_service_->IsDefaultService());
     default_cellular_service_->OnDefaultServiceUpdate(false);
@@ -406,7 +406,7 @@ void ServiceManagerImpl::ClearDefaultCellularService() {
 }
 
 void ServiceManagerImpl::SetDefaultCellularService(Service *service) {
-  DLOG(INFO) << "SetDefaultCellularService: "
+  LOG(INFO) << "SetDefaultCellularService: "
       << ((service == NULL) ? "None" : service->GetPath());
   if (default_cellular_service_ == service) {
     return;
@@ -438,7 +438,7 @@ ServiceManagerImpl::ConnectivityStateFromString(const std::string& state) {
 }
 
 void ServiceManagerImpl::OnFlimflamOnline() {
-  DLOG(INFO) << "OnFlimflamOnline";
+  LOG(INFO) << "OnFlimflamOnline";
   // notify our child services
   ServiceMap::iterator it;
   for (it = services_.begin(); it != services_.end(); ++it) {
@@ -449,7 +449,7 @@ void ServiceManagerImpl::OnFlimflamOnline() {
 }
 
 void ServiceManagerImpl::OnFlimflamOffline() {
-  DLOG(INFO) << "OnFlimflamOffline";
+  LOG(INFO) << "OnFlimflamOffline";
   // notify our child services
   ServiceMap::iterator it;
   for (it = services_.begin(); it != services_.end(); ++it) {

@@ -1,4 +1,4 @@
-// Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -53,7 +53,7 @@ ProcfsByteCounter::ProcfsByteCounter(const std::string& interface)
 ProcfsByteCounter::~ProcfsByteCounter() {
   DCHECK(proc_net_dev_fp_ == NULL);
   if (read_stats_source_id_ != 0 && !g_source_remove(read_stats_source_id_)) {
-    DLOG(WARNING) << interface_ << ": dtor: g_source_remove_failed";
+    LOG(WARNING) << interface_ << ": dtor: g_source_remove_failed";
   }
 }
 
@@ -66,7 +66,7 @@ uint64 ProcfsByteCounter::GetRxBytes() const {
 }
 
 void ProcfsByteCounter::SetRxBytes(uint64 rx_bytes) {
-  DLOG(INFO) << interface_ << ": SetRxBytes: rx_bytes = " << rx_bytes;
+  LOG(INFO) << interface_ << ": SetRxBytes: rx_bytes = " << rx_bytes;
   counter_rx_bytes_ = rx_bytes;
 }
 
@@ -75,12 +75,12 @@ uint64 ProcfsByteCounter::GetTxBytes() const {
 }
 
 void ProcfsByteCounter::SetTxBytes(uint64 tx_bytes) {
-  DLOG(INFO) << interface_ << ": SetTxBytes: tx_bytes = " << tx_bytes;
+  LOG(INFO) << interface_ << ": SetTxBytes: tx_bytes = " << tx_bytes;
   counter_tx_bytes_ = tx_bytes;
 }
 
 void ProcfsByteCounter::SetDelegate(ByteCounterDelegate *delegate) {
-  DLOG(INFO) << interface_ << ": SetDelegate";
+  LOG(INFO) << interface_ << ": SetDelegate";
   delegate_ = delegate;
 }
 
@@ -111,7 +111,7 @@ gboolean ProcfsByteCounter::StaticReadStatsCallback(gpointer data) {
   ProcfsByteCounter *counter = reinterpret_cast<ProcfsByteCounter*>(data);
   CHECK_NOTNULL(counter);
   if (!counter->ReadStats()) {
-    DLOG(WARNING) << counter->GetInterface() << ": StaticReadStatsCallback: "
+    LOG(WARNING) << counter->GetInterface() << ": StaticReadStatsCallback: "
         << "ReadStats failed";
   }
   return TRUE;  // we want to be called again later
@@ -202,21 +202,21 @@ bool ProcfsByteCounter::ReadStats() {
 }
 
 void ProcfsByteCounter::OnStatsUpdate(const struct net_device_stats& stats) {
-  DLOG(INFO) << interface_ << ": OnStatsUpdate: stats: rx_bytes = "
+  LOG(INFO) << interface_ << ": OnStatsUpdate: stats: rx_bytes = "
       << stats.rx_bytes << ", tx_bytes = " << stats.tx_bytes;
   if (baseline_initialized_) {
-    DLOG(INFO) << interface_ << ": OnStatsUpdate: baseline: rx_bytes = "
+    LOG(INFO) << interface_ << ": OnStatsUpdate: baseline: rx_bytes = "
         << baseline_stats_.rx_bytes << ", tx_bytes = "
         << baseline_stats_.tx_bytes;
     uint64 old_counter_rx_bytes = counter_rx_bytes_;
     uint64 old_counter_tx_bytes = counter_tx_bytes_;
-    DLOG(INFO) << interface_ << ": OnStatsUpdate: old counter: rx_bytes = "
+    LOG(INFO) << interface_ << ": OnStatsUpdate: old counter: rx_bytes = "
         << old_counter_rx_bytes << ", tx_bytes = " << old_counter_tx_bytes;
     // these seemingly naive computations handle wraparound due to the modular
     // nature of unsigned subtraction
     counter_rx_bytes_ += stats.rx_bytes - baseline_stats_.rx_bytes;
     counter_tx_bytes_ += stats.tx_bytes - baseline_stats_.tx_bytes;
-    DLOG(INFO) << interface_ << ": OnStatsUpdate: new counter: rx_bytes = "
+    LOG(INFO) << interface_ << ": OnStatsUpdate: new counter: rx_bytes = "
         << counter_rx_bytes_ << ", tx_bytes = " << counter_tx_bytes_;
     bool counter_changed = counter_rx_bytes_ != old_counter_rx_bytes ||
         counter_tx_bytes_ != old_counter_tx_bytes;

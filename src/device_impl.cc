@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -55,7 +55,7 @@ DeviceImpl::~DeviceImpl() {
   StopByteCounter();
   if (get_properties_source_id_ != 0 &&
       !g_source_remove(get_properties_source_id_)) {
-    DLOG(WARNING) << path_ << ": dtor: g_source_remove failed";
+    LOG(WARNING) << path_ << ": dtor: g_source_remove failed";
   }
 }
 
@@ -79,7 +79,7 @@ const std::string& DeviceImpl::GetInterface() const {
 
 void DeviceImpl::PropertyChanged(const std::string& property_name,
                                  const DBus::Variant& new_value) {
-  DLOG(INFO) << path_ << ": PropertyChanged: property_name = " << property_name;
+  LOG(INFO) << path_ << ": PropertyChanged: property_name = " << property_name;
   // Queue a tuple representing this signal for later processing from the glib
   // main loop. We do this to avoid libdbus-c++ deadlocks that can occur when
   // sending a dbus message from within a dbus callback like this one.
@@ -93,7 +93,7 @@ void DeviceImpl::OnPropertyChanged(const PropertyChangedHandler *handler,
                                    const std::string& property_name,
                                    const DBus::Variant& new_value) {
   DCHECK(handler == &property_changed_handler_);
-  DLOG(INFO) << path_ << ": OnPropertyChanged: property_name = "
+  LOG(INFO) << path_ << ": OnPropertyChanged: property_name = "
       << property_name;
   if (property_name == kFlimflamDeviceCarrierProperty) {
     OnCarrierUpdate(new_value.reader().get_string());
@@ -110,24 +110,24 @@ void DeviceImpl::OnPropertyChanged(const PropertyChangedHandler *handler,
 
 bool DeviceImpl::StartByteCounter() {
   if (byte_counter_running_) {
-    DLOG(WARNING) << path_ << ": StartByteCounter: counter already running";
+    LOG(WARNING) << path_ << ": StartByteCounter: counter already running";
     return false;
   }
   byte_counter_running_ = true;
   if (interface_.empty()) {
     // if we don't yet know our interface name, we report success but hold off
     // creating a byte counter object; we'll do so later in OnInterfaceUpdate
-    DLOG(INFO) << path_
+    LOG(INFO) << path_
         << ": StartByteCounter: no interface name, delaying counter creation";
     return true;
   }
   if (!CreateByteCounter()) {
-    DLOG(WARNING) << path_
+    LOG(WARNING) << path_
       << ": StartByteCounter: couldn't create byte counter for " << interface_;
     byte_counter_running_ = false;
     return false;
   }
-  DLOG(INFO) << path_ << ": StartByteCounter: created byte counter for "
+  LOG(INFO) << path_ << ": StartByteCounter: created byte counter for "
       << interface_;
   return true;
 }
@@ -145,7 +145,7 @@ bool DeviceImpl::ByteCounterRunning() const {
 }
 
 void DeviceImpl::ResetByteCounter(uint64 rx_bytes, uint64 tx_bytes) {
-  DLOG(INFO) << path_ << ": ResetByteCounter: rx_bytes = " << rx_bytes
+  LOG(INFO) << path_ << ": ResetByteCounter: rx_bytes = " << rx_bytes
       << ", tx_bytes = " << tx_bytes;
   DCHECK(byte_counter_running_);
   DCHECK(byte_counter_ != NULL);
@@ -160,7 +160,7 @@ void DeviceImpl::OnByteCounterUpdate(const ByteCounter *counter,
   DCHECK(byte_counter_running_);
   DCHECK(byte_counter_ != NULL);
   DCHECK(counter == byte_counter_);
-  DLOG(INFO) << path_ << ": OnByteCounterUpdate: rx_bytes = " << rx_bytes
+  LOG(INFO) << path_ << ": OnByteCounterUpdate: rx_bytes = " << rx_bytes
       << ", tx_bytes = " << tx_bytes;
   parent_->OnByteCounterUpdate(rx_bytes, tx_bytes);
 }
@@ -193,7 +193,7 @@ Device::Type DeviceImpl::TypeFromString(const std::string& type) const {
 }
 
 void DeviceImpl::OnCarrierUpdate(const std::string& carrier) {
-  DLOG(INFO) << path_ << ": OnCarrierUpdate: carrier = " << carrier;
+  LOG(INFO) << path_ << ": OnCarrierUpdate: carrier = " << carrier;
   // only propagate this to parent Service if there's been a change
   // we expect to see only one such change (from "Unknown")
   if (carrier_ == carrier) {
@@ -208,7 +208,7 @@ void DeviceImpl::OnCarrierUpdate(const std::string& carrier) {
 }
 
 void DeviceImpl::OnInterfaceUpdate(const std::string& interface) {
-  DLOG(INFO) << path_ << ": OnInterfaceUpdate: interface = " << interface;
+  LOG(INFO) << path_ << ": OnInterfaceUpdate: interface = " << interface;
   if (interface_ == interface) {
     return;
   }
@@ -239,7 +239,7 @@ void DeviceImpl::OnInterfaceUpdate(const std::string& interface) {
 }
 
 void DeviceImpl::OnTypeUpdate(const std::string& type) {
-  DLOG(INFO) << path_ << ": OnTypeUpdate: type = " << type;
+  LOG(INFO) << path_ << ": OnTypeUpdate: type = " << type;
   type_ = TypeFromString(type);
   if (type_ != kTypeCellular) {
     LOG(WARNING) << path_ << ": OnTypeUpdate: type is not cellular!";
@@ -253,7 +253,7 @@ gboolean DeviceImpl::StaticGetDevicePropertiesCallback(gpointer data) {
   DCHECK_NE(device->get_properties_source_id_, 0);
   if (!device->GetDeviceProperties()) {
     // call failed, so try again later
-    DLOG(WARNING) << device->GetPath()
+    LOG(WARNING) << device->GetPath()
         << ": StaticGetDevicePropertiesCallback: "
         << "GetDeviceProperties failed, will retry in "
         << kGetDevicePropertiesIntervalSeconds << " secs";
@@ -283,7 +283,7 @@ gboolean DeviceImpl::StaticGetDevicePropertiesCallback(gpointer data) {
 }
 
 bool DeviceImpl::GetDeviceProperties() {
-  DLOG(INFO) << path_ << ": GetDeviceProperties";
+  LOG(INFO) << path_ << ": GetDeviceProperties";
   PropertyMap properties;
   // dbus-c++ throws exceptions
   // invoke the "Existing Non-conformant Code" clause of the style guide and
@@ -301,7 +301,7 @@ bool DeviceImpl::GetDeviceProperties() {
         << ": GetDeviceProperties: GetProperties() -> Exception";
     return false;
   }
-  DLOG(INFO) << "Received " << properties.size() << " properties";
+  LOG(INFO) << "Received " << properties.size() << " properties";
 
   // grab the properties in which we're interested
   PropertyMap::const_iterator it;
@@ -310,14 +310,14 @@ bool DeviceImpl::GetDeviceProperties() {
     const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
     OnInterfaceUpdate(value.reader().get_string());
   } else {
-    DLOG(WARNING) << path_ << ": GetDeviceProperties: no Interface property";
+    LOG(WARNING) << path_ << ": GetDeviceProperties: no Interface property";
   }
   it = properties.find(kFlimflamDeviceTypeProperty);
   if (it != properties.end()) {
     const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
     OnTypeUpdate(value.reader().get_string());
   } else {
-    DLOG(WARNING) << path_ << ": GetDeviceProperties: no Type property";
+    LOG(WARNING) << path_ << ": GetDeviceProperties: no Type property";
   }
   // don't expect to find Cellular.* properties if we're not a cellular device
   if (type_ != kTypeCellular) {
@@ -328,7 +328,7 @@ bool DeviceImpl::GetDeviceProperties() {
     const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
     OnCarrierUpdate(value.reader().get_string());
   } else {
-    DLOG(WARNING) << path_
+    LOG(WARNING) << path_
         << ": GetDeviceProperties: no Cellular.Carrier property";
   }
   return true;
@@ -336,11 +336,11 @@ bool DeviceImpl::GetDeviceProperties() {
 
 bool DeviceImpl::CreateByteCounter() {
   if (byte_counter_ != NULL) {
-    DLOG(WARNING) << path_ << ": CreateByteCounter: counter already exists";
+    LOG(WARNING) << path_ << ": CreateByteCounter: counter already exists";
     return false;
   }
   if (interface_.empty()) {
-    DLOG(WARNING) << path_ << ": CreateByteCounter: interface name unknown";
+    LOG(WARNING) << path_ << ": CreateByteCounter: interface name unknown";
     return false;
   }
   byte_counter_ = ByteCounter::NewByteCounter(interface_);
@@ -355,7 +355,7 @@ bool DeviceImpl::CreateByteCounter() {
 }
 
 void DeviceImpl::DeleteByteCounter() {
-  DLOG(INFO) << path_ << ": DeleteByteCounter";
+  LOG(INFO) << path_ << ": DeleteByteCounter";
   if (byte_counter_ != NULL) {
     delete byte_counter_;
     byte_counter_ = NULL;

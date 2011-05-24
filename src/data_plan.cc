@@ -1,4 +1,4 @@
-// Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -156,7 +156,7 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value,
     LOG(WARNING) << "FromDictionaryValue: no last update property";
     return NULL;
   }
-  DLOG(INFO) << "FromDictionaryValue: last update = " << last_update_iso8601;
+  LOG(INFO) << "FromDictionaryValue: last update = " << last_update_iso8601;
   base::Time last_update;
   bool local = policy->ZonelessTimeStringsAreLocal();
   if (!TimeFromIso8601(last_update_iso8601, &last_update, local)) {
@@ -169,21 +169,21 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value,
     LOG(WARNING) << "FromDictionaryValue: no plan name property";
     return NULL;
   }
-  DLOG(INFO) << "FromDictionaryValue: plan name = " << plan_name;
+  LOG(INFO) << "FromDictionaryValue: plan name = " << plan_name;
 
   std::string plan_type_string;
   if (!value->GetString(kCrosUsageDataPlanTypeProperty, &plan_type_string)) {
     LOG(WARNING) << "FromDictionaryValue: no plan type property";
     return NULL;
   }
-  DLOG(INFO) << "FromDictionaryValue: plan type string = " << plan_type_string;
+  LOG(INFO) << "FromDictionaryValue: plan type string = " << plan_type_string;
   Type plan_type;
   if (!CrosUsageStringToType(plan_type_string, &plan_type)) {
     LOG(WARNING) << "FromDictionaryValue: invalid plan type string: "
         << plan_type_string;
     return NULL;
   }
-  DLOG(INFO) << "FromDictionaryValue: converted plan type string to type "
+  LOG(INFO) << "FromDictionaryValue: converted plan type string to type "
       << plan_type;
 
   int64 max_bytes = 0;
@@ -198,7 +198,7 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value,
       LOG(WARNING) << "FromDictionaryValue: max bytes is negative";
       return NULL;
     }
-    DLOG(INFO) << "FromDictionaryValue: max bytes = " << max_bytes;
+    LOG(INFO) << "FromDictionaryValue: max bytes = " << max_bytes;
   }
 
   int64 used_bytes = 0;
@@ -209,7 +209,7 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value,
       LOG(WARNING) << "FromDictionaryValue: no used bytes property";
       return NULL;
     } else {
-      DLOG(INFO)
+      LOG(INFO)
           << "FromDictionaryValue: no used bytes property (using default of 0)";
     }
   }
@@ -217,7 +217,7 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value,
     LOG(WARNING) << "FromDictionaryValue: used bytes is negative";
     return NULL;
   }
-  DLOG(INFO) << "FromDictionaryValue: used bytes = " << used_bytes;
+  LOG(INFO) << "FromDictionaryValue: used bytes = " << used_bytes;
 
   std::string start_time_iso8601;
   if (!value->GetString(kCrosUsageDataPlanStartTimeProperty,
@@ -225,7 +225,7 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value,
     LOG(WARNING) << "FromDictionaryValue: no start time property";
     return NULL;
   }
-  DLOG(INFO) << "FromDictionaryValue: start time = " << start_time_iso8601;
+  LOG(INFO) << "FromDictionaryValue: start time = " << start_time_iso8601;
   base::Time start_time;
   if (!TimeFromIso8601(start_time_iso8601, &start_time, local)) {
     LOG(WARNING) << "FromDictionaryValue: could not convert start time";
@@ -238,7 +238,7 @@ DataPlan* DataPlan::FromDictionaryValue(const DictionaryValue *value,
     LOG(WARNING) << "FromDictionaryValue: no end time property";
     return NULL;
   }
-  DLOG(INFO) << "FromDictionaryValue: end time = " << end_time_iso8601;
+  LOG(INFO) << "FromDictionaryValue: end time = " << end_time_iso8601;
   base::Time end_time;
   if (!TimeFromIso8601(end_time_iso8601, &end_time, local)) {
     LOG(WARNING) << "FromDictionaryValue: could not convert end time";
@@ -281,7 +281,7 @@ bool DataPlan::TimeFromIso8601(const std::string& time_8601,
       tm_is_utc = true;
     }
   } else {
-    DLOG(WARNING) << "TimeFromIso8601: strptime failed for time string: "
+    LOG(WARNING) << "TimeFromIso8601: strptime failed for time string: "
         << time_8601;
     return false;
   }
@@ -291,13 +291,13 @@ bool DataPlan::TimeFromIso8601(const std::string& time_8601,
   if (tm_is_utc) {
     // NOTE: timegm interprets its input as being in UTC.
     if ((tt = timegm(&tm)) == -1) {
-      DLOG(WARNING) << "TimeFromIso8601: timegm failed";
+      LOG(WARNING) << "TimeFromIso8601: timegm failed";
       return false;
     }
   } else {
     // NOTE: mktime interprets its input as being in local time.
     if ((tt = mktime(&tm)) == -1) {
-      DLOG(WARNING) << "TimeFromIso8601: mktime failed";
+      LOG(WARNING) << "TimeFromIso8601: mktime failed";
       return false;
     }
   }
@@ -330,16 +330,16 @@ bool DataPlan::OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
   DCHECK(service_manager != NULL);
   DCHECK(device != NULL);
   DCHECK(device->ByteCounterRunning());
-  DLOG(INFO) << "OnByteCounterUpdate: rx_bytes = " << rx_bytes
+  LOG(INFO) << "OnByteCounterUpdate: rx_bytes = " << rx_bytes
       << ", tx_bytes = " << tx_bytes;
   DataPlan *active_plan = DataPlan::GetActivePlan(*data_plans);
   if (active_plan == NULL) {
-    DLOG(WARNING) << "OnByteCounterUpdate: no active plan";
+    LOG(WARNING) << "OnByteCounterUpdate: no active plan";
     device->StopByteCounter();
     return false;
   }
   ByteCount local_bytes_used = rx_bytes + tx_bytes;
-  DLOG(INFO) << "OnByteCounterUpdate: local_bytes_used = " << local_bytes_used;
+  LOG(INFO) << "OnByteCounterUpdate: local_bytes_used = " << local_bytes_used;
   // try to detect two error conditions:
   // (1) overflow of the unsigned addition above prior to the assignment
   // (2) no overflow, but result has high order bit set and so is interpreted as
@@ -359,11 +359,11 @@ bool DataPlan::OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
   //   beginning of the sample interval but has now expired. A future CL will
   //   add expiration timers to plan objects to handle this case.
   ByteCount previous_local_bytes_used = active_plan->GetLocalBytesUsed();
-  DLOG(INFO) << "OnByteCounterUpdate: previous_local_bytes_used = "
+  LOG(INFO) << "OnByteCounterUpdate: previous_local_bytes_used = "
       << previous_local_bytes_used;
   DCHECK_LE(previous_local_bytes_used, local_bytes_used);
   ByteCount used_bytes_to_assign = local_bytes_used - previous_local_bytes_used;
-  DLOG(INFO) << "OnByteCounterUpdate: used_bytes_to_assign = "
+  LOG(INFO) << "OnByteCounterUpdate: used_bytes_to_assign = "
       << used_bytes_to_assign;
   // iterate through active plans, assigning as much data as possible to each
   // plan and expiring it if its data quota is fully consumed
@@ -390,7 +390,7 @@ bool DataPlan::OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
     DCHECK_GE(assigned_bytes, 0);
     active_plan->SetLocalBytesUsed(previous_local_bytes_used + assigned_bytes);
     any_plan_updated = true;
-    DLOG(INFO) << "OnByteCounterUpdate: " << active_plan->GetName()
+    LOG(INFO) << "OnByteCounterUpdate: " << active_plan->GetName()
         << ": updated plan state: data bytes used = "
         << active_plan->GetDataBytesUsed() << ", local bytes used = "
         << active_plan->GetLocalBytesUsed() << ", total bytes used = "
@@ -412,7 +412,7 @@ bool DataPlan::OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
     device->StopByteCounter();
     // warn if we've measured usage beyond what should have been available
     if (used_bytes_to_assign > 0) {
-      DLOG(WARNING) << "OnByteCounterUpdate: used_bytes_to_assign = "
+      LOG(WARNING) << "OnByteCounterUpdate: used_bytes_to_assign = "
           << used_bytes_to_assign << ", but no active plan";
     }
   }
