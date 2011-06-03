@@ -48,13 +48,41 @@ class ProcfsByteCounter: public ByteCounter {
     // counter: transmitted byes
     uint64 counter_tx_bytes_;
 
+    // This used to be exported by the kernel, but isn't any more, so we make
+    // our own definition here.
+    struct netdev_stats {
+        unsigned long   rx_packets;
+        unsigned long   tx_packets;
+        unsigned long   rx_bytes;
+        unsigned long   tx_bytes;
+        unsigned long   rx_errors;
+        unsigned long   tx_errors;
+        unsigned long   rx_dropped;
+        unsigned long   tx_dropped;
+        unsigned long   multicast;
+        unsigned long   collisions;
+        unsigned long   rx_length_errors;
+        unsigned long   rx_over_errors;
+        unsigned long   rx_crc_errors;
+        unsigned long   rx_frame_errors;
+        unsigned long   rx_fifo_errors;
+        unsigned long   rx_missed_errors;
+        unsigned long   tx_aborted_errors;
+        unsigned long   tx_carrier_errors;
+        unsigned long   tx_fifo_errors;
+        unsigned long   tx_heartbeat_errors;
+        unsigned long   tx_window_errors;
+        unsigned long   rx_compressed;
+        unsigned long   tx_compressed;
+    };
+
     // baseline stats against which we'll compare our next update
     // updated with each sample so as to better handle wraparound
     //
     // these stats are maintained by the device driver starting from kernel boot
     // or module load time and have aribitrary values relative to when our
     // logical |counter_rx_bytes_| and |counter_tx_bytes_| counters were started
-    struct net_device_stats baseline_stats_;
+    struct netdev_stats baseline_stats_;
 
     // have our baseline device stats been initialized?
     // this becomes true after the first call to OnStatsUpdate
@@ -82,7 +110,7 @@ class ProcfsByteCounter: public ByteCounter {
     bool ReadStats();
 
     // new stats are available, update counter
-    void OnStatsUpdate(const struct net_device_stats& stats);
+    void OnStatsUpdate(const struct netdev_stats& stats);
 
     DISALLOW_COPY_AND_ASSIGN(ProcfsByteCounter);
 };

@@ -157,13 +157,13 @@ bool ProcfsByteCounter::ReadStats() {
     }
     *colon_ptr = ' ';
     char device_name[IFNAMSIZ];
-    struct net_device_stats stats;
+    struct netdev_stats stats;
     memset(&stats, 0, sizeof(stats));
     // cpplint tells us that sscanf, while not prohibited, is sketchy
     // we'll risk it since this data is from the kernel proc fs and we provide
     //   the format string
     //
-    // note that some fields of net_device_stats are combined when producing the
+    // note that some fields of netdev_stats are combined when producing the
     //   contents of /proc/net/dev
     // we assign these combined values to the field named in the column header
     int result = sscanf(line_buffer, kProcNetDevLineFormat,  // NOLINT
@@ -201,7 +201,7 @@ bool ProcfsByteCounter::ReadStats() {
   return false;
 }
 
-void ProcfsByteCounter::OnStatsUpdate(const struct net_device_stats& stats) {
+void ProcfsByteCounter::OnStatsUpdate(const struct netdev_stats& stats) {
   LOG(INFO) << interface_ << ": OnStatsUpdate: stats: rx_bytes = "
       << stats.rx_bytes << ", tx_bytes = " << stats.tx_bytes;
   if (baseline_initialized_) {
