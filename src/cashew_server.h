@@ -32,6 +32,8 @@ class CashewServer : public org::chromium::Cashew_adaptor,
                  GMainLoop * const main_loop);
     virtual ~CashewServer();
 
+    typedef std::map<std::string, int64_t> BytesPerItem;
+
     // Cashew D-Bus API methods
 
     // Get data plan info for a cellular service
@@ -41,6 +43,13 @@ class CashewServer : public org::chromium::Cashew_adaptor,
     // Request that a DataPlansUpdate signal be sent for a cellular service
     virtual void RequestDataPlansUpdate(const std::string& service_path,
                                         DBus::Error& error);  // NOLINT
+
+    // Report the number of bytes used by the current user
+    virtual void ReportBytesUsed(const int64_t& bytes,
+                                 DBus::Error &error);  // NOLINT
+
+    // Request total bytes used per user
+    virtual BytesPerItem GetByteUsageData(DBus::Error &error);  // NOLINT
 
     // Test method to verify that Cashew service is working
     virtual bool IsAlive(DBus::Error& error);  // NOLINT

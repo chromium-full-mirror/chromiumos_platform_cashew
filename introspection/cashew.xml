@@ -16,45 +16,52 @@
       </tp:docstring>
     </tp:simple-type>
 
+    <tp:simple-type name="BytesPerItem" type="a{sx}">
+      <tp:docstring>
+        An array of String(User)-Integer(Bytes) pairs. We use this
+        structure when mapping users to bytes.
+      </tp:docstring>
+    </tp:simple-type>
+
     <tp:struct name="DataPlan" array-name="DataPlansList">
       <tp:docstring>
-        A struct representing a data plan for a cellular service. 
-	Some fields are not always present, so this is sent as a dict.
+        A struct representing a data plan for a cellular service. Some fields are
+        not always present, so this is sent as a dict.
       </tp:docstring>
       <tp:member name="CellularPlanName" type="s">
         <tp:docstring>
           Human-friendly plan name
-	</tp:docstring>
+        </tp:docstring>
       </tp:member>
       <tp:member name="CellularPlanType" type="s">
         <tp:docstring>
-          Plan type.  One of: UNLIMITED, METERED_PAID, METERED_BASE.
-	</tp:docstring>
+          Plan type. One of: UNLIMITED, METERED_PAID, METERED_BASE.
+        </tp:docstring>
       </tp:member>
       <tp:member name="CellularPlanUpdateTime" type="x" tp:type="Timestamp">
         <tp:docstring>
           Timestamp indicating freshness of plan data.
-	</tp:docstring>
+        </tp:docstring>
       </tp:member>
       <tp:member name="CellularPlanStart" type="x" tp:type="Timestamp">
         <tp:docstring>
           Timestamp indicating time at which plan becomes active.
-	</tp:docstring>
+        </tp:docstring>
       </tp:member>
       <tp:member name="CellularPlanEnd" type="x" tp:type="Timestamp">
         <tp:docstring>
           Timestamp indicating time at which plan expires.
-	</tp:docstring>
+        </tp:docstring>
       </tp:member>
       <tp:member name="CellularPlanDataBytes" type="x" tp:type="Bytes">
         <tp:docstring>
           Max number of bytes available during plan period.
-	</tp:docstring>
+        </tp:docstring>
       </tp:member>
       <tp:member name="CellularDataBytesUsed" type="x" tp:type="Bytes">
         <tp:docstring>
           Number of bytes already consumed during plan period.
-	</tp:docstring>
+        </tp:docstring>
       </tp:member>
     </tp:struct>
 
@@ -90,8 +97,8 @@
       </arg>
       <tp:possible-errors>
         <tp:error name="org.chromium.Cashew.Error.ServiceUnknown">
-	  The service path does not correspond to a known service.
-	</tp:error>
+          The service path does not correspond to a known service.
+        </tp:error>
       </tp:possible-errors>
     </method>
 
@@ -106,9 +113,33 @@
       </arg>
       <tp:possible-errors>
         <tp:error name="org.chromium.Cashew.Error.ServiceUnknown">
-	  The service path does not correspond to a known service.
-	</tp:error>
+          The service path does not correspond to a known service.
+        </tp:error>
       </tp:possible-errors>
+    </method>
+
+    <method name="ReportBytesUsed">
+      <tp:docstring>
+        Chrome invokes this method to pass on the information to Cashew about the
+        number of bytes used by the current user.
+      </tp:docstring>
+      <arg name="bytes" type="x" direction="in" tp:type="Bytes">
+        <tp:docstring>
+          Bytes used by this user.
+        </tp:docstring>
+      </arg>
+    </method>
+
+    <method name="GetByteUsageData">
+      <tp:docstring>
+        Returns the number of bytes used per user for each user.
+      </tp:docstring>
+      <arg name="BytesPerUser" type="a{sx}" direction="out" tp:type="BytesPerItem">
+        <tp:docstring>
+          An array of String(User)-Integer(Bytes) pairs representing bytes per user
+          for all users on the machine.
+        </tp:docstring>
+      </arg>
     </method>
 
     <method name="IsAlive">
@@ -116,9 +147,9 @@
         Test method to verify that Cashew service is working.
       </tp:docstring>
       <arg name="result" type="b" direction="out">
-	<tp:docstring>
-	  Boolean indicating whether Cashew service is alive.
-	</tp:docstring>
+        <tp:docstring>
+          Boolean indicating whether Cashew service is alive.
+        </tp:docstring>
       </arg>
     </method>
   </interface>

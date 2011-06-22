@@ -66,6 +66,17 @@ void CashewServer::RequestDataPlansUpdate(const std::string& service_path,
   EmitDataPlansUpdateSignal(*service);
 }
 
+void CashewServer::ReportBytesUsed(const int64_t& bytes,
+                                   DBus::Error &error) { // NOLINT
+  return;
+}
+
+CashewServer::BytesPerItem CashewServer::GetByteUsageData (
+    DBus::Error &error) {  // NOLINT
+  CashewServer::BytesPerItem to_return;
+  return to_return;
+}
+
 bool CashewServer::IsAlive(DBus::Error& error) {  // NOLINT
   LOG(INFO) << "IsAlive";
   return true;
