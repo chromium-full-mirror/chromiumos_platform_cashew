@@ -15,6 +15,7 @@ PKG_CHECK_MODULES([GLIB], [glib-2.0])
 PKG_CHECK_MODULES([GLOG], [libglog])
 # TODO(vlaviano): check for gmock
 # TODO(vlaviano): check for gtest
+# TODO(vlaviano): check for libmetrics
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([
     Makefile

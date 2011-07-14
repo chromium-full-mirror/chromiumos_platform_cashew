@@ -19,6 +19,7 @@
 namespace cashew {
 
 class CashewServer;
+class MetricsManager;
 
 // map of service path names to Service objects
 typedef std::map<std::string, Service*> ServiceMap;
@@ -60,7 +61,8 @@ class ServiceManager {
     // factory
     static ServiceManager* NewServiceManager(
                                         DBus::Connection& connection,  // NOLINT
-                                        GMainLoop * const main_loop);
+                                        GMainLoop * const main_loop,
+                                        MetricsManager * const metrics_manager);
 
   private:
     DISALLOW_COPY_AND_ASSIGN(ServiceManager);

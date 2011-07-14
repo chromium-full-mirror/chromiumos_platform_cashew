@@ -53,7 +53,10 @@ static const int kCrosUsageVersionMinSupported = 1;
 static const int kCrosUsageVersionMaxSupported = 1;
 
 // Chromium OS Usage API status values
-// NOTE: add new values to IsValidCrosUsageStatus below also
+// NOTE: add new values to IsValidCrosUsageStatus below
+// NOTE: add new values to Metrics Manager's UsageRequestStatus enum
+// NOTE: add new values to MetricsEnumFromStatusString below
+// TODO(vlaviano): improve this
 static const char *kCrosUsageStatusOk = "OK";
 static const char *kCrosUsageStatusError = "ERROR";
 static const char *kCrosUsageStatusMalformedRequest = "MALFORMED REQUEST";
@@ -68,9 +71,11 @@ static const guint kGetServicePropertiesIntervalSeconds = 1 * kSecondsPerMinute;
 
 ServiceImpl::ServiceImpl(ServiceManager * const parent,
                          DBus::Connection& connection,  // NOLINT
+                         MetricsManager * const metrics_manager,
                          const DBus::Path& path)
     : DBus::ObjectProxy(connection, path, kFlimflamServiceName),
-      parent_(CHECK_NOTNULL(parent)), connection_(connection), path_(path),
+      parent_(CHECK_NOTNULL(parent)), connection_(connection),
+      metrics_manager_(CHECK_NOTNULL(metrics_manager)), path_(path),
       state_(kStateUnknown), type_(kTypeUnknown), device_(NULL),
       provider_(NULL), request_in_progress_(false),
       update_timeout_source_(NULL), policy_(NULL),
@@ -272,6 +277,8 @@ void ServiceImpl::OnRequestComplete(const DataPlanProvider *provider,
   request_in_progress_ = false;
   if (!successful) {
     LOG(WARNING) << path_ << ": OnRequestComplete: request failed";
+    metrics_manager_->OnUsageRequestStatusSample(
+        MetricsManager::kUsageRequestStatusFailed);
     return;
   }
 
@@ -304,6 +311,8 @@ void ServiceImpl::OnRequestComplete(const DataPlanProvider *provider,
     return;
   }
   LOG(INFO) << path_ << ": OnRequestComplete: status = " << status;
+  metrics_manager_->OnUsageRequestStatusSample(
+      MetricsEnumFromStatusString(status));
   if (!IsValidCrosUsageStatus(status)) {
     LOG(WARNING) << path_ << ": OnRequestComplete: invalid status: " << status;
     return;
@@ -707,7 +716,7 @@ void ServiceImpl::DeleteCarrierState() {
   }
 }
 
-bool ServiceImpl::IsValidCrosUsageStatus(const std::string& status) const {
+bool ServiceImpl::IsValidCrosUsageStatus(const std::string& status) {
   if (status == kCrosUsageStatusOk ||
       status == kCrosUsageStatusError ||
       status == kCrosUsageStatusMalformedRequest ||
@@ -718,6 +727,34 @@ bool ServiceImpl::IsValidCrosUsageStatus(const std::string& status) const {
     return true;
   }
   return false;
+}
+
+MetricsManager::UsageRequestStatus ServiceImpl::MetricsEnumFromStatusString(
+    const std::string& status) {
+  DCHECK(IsValidCrosUsageStatus(status));
+  if (status == kCrosUsageStatusOk) {
+    return MetricsManager::kUsageRequestStatusOk;
+  }
+  if (status == kCrosUsageStatusError) {
+    return MetricsManager::kUsageRequestStatusError;
+  }
+  if (status == kCrosUsageStatusMalformedRequest) {
+    return MetricsManager::kUsageRequestStatusMalformedRequest;
+  }
+  if (status == kCrosUsageStatusInternalError) {
+    return MetricsManager::kUsageRequestStatusInternalError;
+  }
+  if (status == kCrosUsageStatusServiceUnavailable) {
+    return MetricsManager::kUsageRequestStatusServiceUnavailable;
+  }
+  if (status == kCrosUsageStatusRequestRefused) {
+    return MetricsManager::kUsageRequestStatusRequestRefused;
+  }
+  if (status == kCrosUsageStatusUnknownDevice) {
+    return MetricsManager::kUsageRequestStatusUnknownDevice;
+  }
+  LOG(WARNING) << "MetricsEnumFromStatusString: Unknown status: " << status;
+  return MetricsManager::kUsageRequestStatusError;
 }
 
 void ServiceImpl::OnCrosUsageErrorResult(const std::string& status) {

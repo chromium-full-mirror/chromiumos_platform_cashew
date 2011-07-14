@@ -29,13 +29,15 @@ static const guint kGetFlimflamPropertiesIntervalSeconds =
     1 * kSecondsPerMinute;
 
 ServiceManagerImpl::ServiceManagerImpl(DBus::Connection& connection,  // NOLINT
-                                       GMainLoop * const main_loop)
+                                       GMainLoop * const main_loop,
+                                       MetricsManager * const metrics_manager)
     : DBus::ObjectProxy(connection, kFlimflamManagerPath,
                         kFlimflamManagerName),
       connection_(connection), main_loop_(CHECK_NOTNULL(main_loop)),
-      cashew_server_(NULL), default_technology_(Service::kTypeUnknown),
-      default_cellular_service_(NULL),
-      get_properties_source_id_(0), retrying_get_properties_(false) {
+      metrics_manager_(CHECK_NOTNULL(metrics_manager)), cashew_server_(NULL),
+      default_technology_(Service::kTypeUnknown),
+      default_cellular_service_(NULL), get_properties_source_id_(0),
+      retrying_get_properties_(false) {
   // schedule a GetProperties() call to Flimflam to init our state
   // we'll keep trying periodically until we succeed
   // we'll subsequently update this state by monitoring PropertyChanged signals
@@ -317,7 +319,8 @@ void ServiceManagerImpl::OnServicesUpdate(const ServicePathList& paths) {
 void ServiceManagerImpl::OnNewService(const DBus::Path& path) {
   LOG(INFO) << "OnNewService: " << path;
   DCHECK(GetService(path) == NULL);
-  Service *service = Service::NewService(this, connection_, path);
+  Service *service = Service::NewService(this, connection_, metrics_manager_,
+                                         path);
   if (service == NULL) {
     LOG(ERROR) << "OnNewService: couldn't create service for " << path;
     return;

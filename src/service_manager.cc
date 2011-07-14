@@ -12,9 +12,11 @@ namespace cashew {
 
 // static
 ServiceManager* ServiceManager::NewServiceManager(
-                                        DBus::Connection& connection,  // NOLINT
-                                        GMainLoop * const main_loop) {
-  return new(std::nothrow) ServiceManagerImpl(connection, main_loop);
+                                       DBus::Connection& connection,  // NOLINT
+                                       GMainLoop * const main_loop,
+                                       MetricsManager * const metrics_manager) {
+  return new(std::nothrow) ServiceManagerImpl(connection, main_loop,
+                                              metrics_manager);
 }
 
 }  // namespace cashew

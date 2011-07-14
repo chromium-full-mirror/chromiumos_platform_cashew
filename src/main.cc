@@ -18,6 +18,7 @@
 
 #include "src/cashew_server.h"
 #include "src/service_manager.h"
+#include "src/metrics_manager.h"
 
 namespace cashew {
 
@@ -43,6 +44,7 @@ static DBus::Glib::BusDispatcher *dispatcher = NULL;
 static GMainLoop *main_loop = NULL;
 static CashewServer *server = NULL;
 static ServiceManager *service_manager = NULL;
+static MetricsManager *metrics_manager = NULL;
 
 static void OnSignal(int signal) {
   LOG(INFO) << "received signal " << signal;
@@ -86,6 +88,8 @@ static void CleanUpForExit() {
   server = NULL;
   delete service_manager;
   service_manager = NULL;
+  delete metrics_manager;
+  metrics_manager = NULL;
   DBus::default_dispatcher = NULL;
   delete dispatcher;
   dispatcher = NULL;
@@ -123,11 +127,19 @@ int main(int argc, char *argv[]) {
   DBus::default_dispatcher = cashew::dispatcher;
   cashew::dispatcher->attach(NULL);
 
+  LOG(INFO) << "creating metrics manager";
+  cashew::metrics_manager = cashew::MetricsManager::NewMetricsManager();
+  if (cashew::metrics_manager == NULL) {
+    LOG(ERROR) << "couldn't create metrics manager";
+    cashew::CleanUpForExit();
+    exit(EXIT_FAILURE);
+  }
+
   LOG(INFO) << "creating service manager";
   DBus::Connection client_conn = DBus::Connection::SystemBus();
   client_conn.set_timeout(cashew::kDBusConnectionTimeoutMilliseconds);
   cashew::service_manager = cashew::ServiceManager::NewServiceManager(
-      client_conn, cashew::main_loop);
+      client_conn, cashew::main_loop, cashew::metrics_manager);
   if (cashew::service_manager == NULL) {
     LOG(ERROR) << "couldn't create service manager";
     cashew::CleanUpForExit();

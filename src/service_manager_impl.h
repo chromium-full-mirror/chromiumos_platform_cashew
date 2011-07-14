@@ -29,7 +29,8 @@ class ServiceManagerImpl : public ServiceManager,
                            public PropertyChangedDelegate {
   public:
     ServiceManagerImpl(DBus::Connection& connection,  // NOLINT
-                       GMainLoop * const main_loop);
+                       GMainLoop * const main_loop,
+                       MetricsManager * const metrics_manager);
     virtual ~ServiceManagerImpl();
 
     // ServiceManager methods
@@ -68,6 +69,9 @@ class ServiceManagerImpl : public ServiceManager,
 
     // glib main loop
     GMainLoop * const main_loop_;
+
+    // metrics manager to which we provide interesting stats
+    MetricsManager * const metrics_manager_;
 
     // collection of Service objs representing cellular services
     ServiceMap services_;

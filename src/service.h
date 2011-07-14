@@ -18,6 +18,7 @@
 namespace cashew {
 
 class Device;
+class MetricsManager;
 class Policy;
 class ServiceManager;
 
@@ -97,6 +98,7 @@ class Service {
     // factory
     static Service* NewService(ServiceManager * const parent,
                                DBus::Connection& connection,  // NOLINT
+                               MetricsManager * const metrics_manager,
                                const DBus::Path& path);
 
   private:

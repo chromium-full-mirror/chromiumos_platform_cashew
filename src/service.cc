@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,9 +18,11 @@ Service::Type Service::TypeFromString(const std::string& type) {
 // static
 Service* Service::NewService(ServiceManager * const parent,
                              DBus::Connection& connection,  // NOLINT
+                             MetricsManager * const metrics_manager,
                              const DBus::Path& path) {
   DCHECK(parent != NULL);
-  return new(std::nothrow) ServiceImpl(parent, connection, path);
+  return new(std::nothrow) ServiceImpl(parent, connection, metrics_manager,
+                                       path);
 }
 
 }  // namespace cashew

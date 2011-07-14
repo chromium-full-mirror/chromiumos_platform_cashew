@@ -1,4 +1,4 @@
-# Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+# Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -32,6 +32,10 @@ libcashew_la_SOURCES = \
   json_reader.cc \
   libcurl_http_fetcher.h \
   libcurl_http_fetcher.cc \
+  metrics_manager.h \
+  metrics_manager.cc \
+  metrics_manager_impl.h \
+  metrics_manager_impl.cc \
   policy.h \
   policy.cc \
   procfs_byte_counter.h \
@@ -79,6 +83,9 @@ LIBBASE_LIBS = -lbase
 GFLAGS_CFLAGS =
 GFLAGS_LIBS = -lgflags
 
+METRICS_CFLAGS =
+METRICS_LIBS = -lmetrics
+
 # these COMMON defs are shared among libcashew, cashewd, and cashew_unittest
 
 COMMON_CFLAGS = \
@@ -89,7 +96,8 @@ COMMON_CFLAGS = \
   @DBUS_CPP_CFLAGS@ \
   $(GFLAGS_CFLAGS) \
   @GLIB_CFLAGS@ \
-  @GLOG_CFLAGS@
+  @GLOG_CFLAGS@ \
+  $(METRICS_CFLAGS)
 
 COMMON_LIBS = \
   $(LIBBASE_LIBS) \
@@ -97,7 +105,8 @@ COMMON_LIBS = \
   @DBUS_CPP_LIBS@ \
   $(GFLAGS_LIBS) \
   @GLIB_LIBS@ \
-  @GLOG_LIBS@
+  @GLOG_LIBS@ \
+  $(METRICS_LIBS)
 
 libcashew_la_CXXFLAGS = \
   $(COMMON_CFLAGS)

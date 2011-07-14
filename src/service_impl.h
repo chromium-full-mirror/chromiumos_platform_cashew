@@ -18,6 +18,7 @@
 #include "src/data_plan.h"
 #include "src/data_plan_provider.h"
 #include "src/flimflam_service_client_glue.h"
+#include "src/metrics_manager.h"
 #include "src/property_changed_handler.h"
 #include "src/service.h"
 
@@ -33,6 +34,7 @@ class ServiceImpl : public Service,
   public:
     ServiceImpl(ServiceManager * const parent,
                 DBus::Connection& connection,  // NOLINT
+                MetricsManager * const metrics_manager,
                 const DBus::Path& path);
     virtual ~ServiceImpl();
 
@@ -86,6 +88,9 @@ class ServiceImpl : public Service,
     // D-Bus connection, owned by our creator
     // shared with Device obj that we create
     DBus::Connection& connection_;
+
+    // metrics manager to which we provide interesting stats
+    MetricsManager * const metrics_manager_;
 
     // D-Bus path for Flimflam service that we represent
     // this is our unique identifier
@@ -193,7 +198,12 @@ class ServiceImpl : public Service,
     void DeleteCarrierState();
 
     // does |status| contain a valid usage API status result string?
-    bool IsValidCrosUsageStatus(const std::string& status) const;
+    static bool IsValidCrosUsageStatus(const std::string& status);
+
+    // convert a usage API status result string to an UsageRequestStatus enum
+    // value for the Metrics Manager
+    static MetricsManager::UsageRequestStatus MetricsEnumFromStatusString(
+        const std::string& status);
 
     // usage API request returned an error result
     void OnCrosUsageErrorResult(const std::string& status);
