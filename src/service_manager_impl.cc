@@ -30,11 +30,13 @@ static const guint kGetFlimflamPropertiesIntervalSeconds =
 
 ServiceManagerImpl::ServiceManagerImpl(DBus::Connection& connection,  // NOLINT
                                        GMainLoop * const main_loop,
-                                       MetricsManager * const metrics_manager)
+                                       MetricsManager * const metrics_manager,
+                                       UserAggregator * const aggregator)
     : DBus::ObjectProxy(connection, kFlimflamManagerPath,
                         kFlimflamManagerName),
       connection_(connection), main_loop_(CHECK_NOTNULL(main_loop)),
-      metrics_manager_(CHECK_NOTNULL(metrics_manager)), cashew_server_(NULL),
+      metrics_manager_(CHECK_NOTNULL(metrics_manager)),
+      aggregator_(CHECK_NOTNULL(aggregator)), cashew_server_(NULL),
       default_technology_(Service::kTypeUnknown),
       default_cellular_service_(NULL), get_properties_source_id_(0),
       retrying_get_properties_(false) {
@@ -320,7 +322,7 @@ void ServiceManagerImpl::OnNewService(const DBus::Path& path) {
   LOG(INFO) << "OnNewService: " << path;
   DCHECK(GetService(path) == NULL);
   Service *service = Service::NewService(this, connection_, metrics_manager_,
-                                         path);
+                                         aggregator_, path);
   if (service == NULL) {
     LOG(ERROR) << "OnNewService: couldn't create service for " << path;
     return;

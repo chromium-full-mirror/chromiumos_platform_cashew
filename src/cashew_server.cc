@@ -7,6 +7,7 @@
 #include <glog/logging.h>
 
 #include "src/service_manager.h"
+#include "src/user_aggregator.h"
 
 namespace cashew {
 
@@ -19,10 +20,12 @@ const char* kCashewErrorServiceUnknown =
 
 CashewServer::CashewServer(DBus::Connection& connection,  // NOLINT
                            ServiceManager * const service_manager,
-                           GMainLoop * const main_loop)
+                           GMainLoop * const main_loop,
+                           UserAggregator * const aggregator)
     : DBus::ObjectAdaptor(connection, kServicePath),
       service_manager_(CHECK_NOTNULL(service_manager)),
-      main_loop_(CHECK_NOTNULL(main_loop)) {
+      main_loop_(CHECK_NOTNULL(main_loop)),
+      aggregator_(CHECK_NOTNULL(aggregator)) {
   service_manager_->SetCashewServer(this);
 }
 

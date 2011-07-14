@@ -17,8 +17,9 @@
 #include <glog/logging.h>
 
 #include "src/cashew_server.h"
-#include "src/service_manager.h"
 #include "src/metrics_manager.h"
+#include "src/service_manager.h"
+#include "src/user_aggregator.h"
 
 namespace cashew {
 
@@ -40,11 +41,12 @@ int InstallSignalHandler(const Signal signal,
   return sigaction(signal, &action, NULL);
 }
 
-static DBus::Glib::BusDispatcher *dispatcher = NULL;
 static GMainLoop *main_loop = NULL;
-static CashewServer *server = NULL;
-static ServiceManager *service_manager = NULL;
+static DBus::Glib::BusDispatcher *dispatcher = NULL;
 static MetricsManager *metrics_manager = NULL;
+static UserAggregator *aggregator = NULL;
+static ServiceManager *service_manager = NULL;
+static CashewServer *server = NULL;
 
 static void OnSignal(int signal) {
   LOG(INFO) << "received signal " << signal;
@@ -88,6 +90,8 @@ static void CleanUpForExit() {
   server = NULL;
   delete service_manager;
   service_manager = NULL;
+  delete aggregator;
+  aggregator = NULL;
   delete metrics_manager;
   metrics_manager = NULL;
   DBus::default_dispatcher = NULL;
@@ -135,11 +139,20 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
+  LOG(INFO) << "creating user aggregator";
+  cashew::aggregator = cashew::UserAggregator::NewUserAggregator();
+  if (cashew::aggregator == NULL) {
+    LOG(ERROR) << "couldn't create user aggregator";
+    cashew::CleanUpForExit();
+    exit(EXIT_FAILURE);
+  }
+
   LOG(INFO) << "creating service manager";
   DBus::Connection client_conn = DBus::Connection::SystemBus();
   client_conn.set_timeout(cashew::kDBusConnectionTimeoutMilliseconds);
   cashew::service_manager = cashew::ServiceManager::NewServiceManager(
-      client_conn, cashew::main_loop, cashew::metrics_manager);
+      client_conn, cashew::main_loop, cashew::metrics_manager,
+      cashew::aggregator);
   if (cashew::service_manager == NULL) {
     LOG(ERROR) << "couldn't create service manager";
     cashew::CleanUpForExit();
@@ -152,7 +165,7 @@ int main(int argc, char *argv[]) {
   server_conn.request_name(cashew::CashewServer::kServiceName);
   server_conn.set_timeout(cashew::kDBusConnectionTimeoutMilliseconds);
   cashew::server = new(std::nothrow) cashew::CashewServer(server_conn,
-      cashew::service_manager, cashew::main_loop);
+      cashew::service_manager, cashew::main_loop, cashew::aggregator);
   if (cashew::server == NULL) {
     LOG(ERROR) << "couldn't create cashew server";
     cashew::CleanUpForExit();

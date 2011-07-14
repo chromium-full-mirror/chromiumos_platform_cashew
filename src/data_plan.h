@@ -1,4 +1,4 @@
-// Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,6 +20,7 @@
 namespace cashew {
 
 class DataPlan;
+class DataPlanDelegate;
 class Device;
 class Policy;
 class Service;
@@ -94,6 +95,10 @@ class DataPlan {
     // return a{sv} representation for D-Bus
     virtual DBusDataPlan ToDBusFormat() const;
 
+    // set the delegate for this plan
+    // it's ok to clear this by setting it to NULL
+    virtual void SetDelegate(DataPlanDelegate *delegate);
+
     // construct DataPlan from DictionaryValue
     static DataPlan* FromDictionaryValue(const DictionaryValue *value,
                                          const Policy *policy);
@@ -154,6 +159,9 @@ class DataPlan {
     // locally measured traffic (|local_bytes_used_|)
     ByteCount total_bytes_used_;
 
+    // delegate
+    DataPlanDelegate *delegate_;
+
     // convert plan type enum value to string formatted for libcros
     const char* TypeToLibcrosString(Type type) const;
 
@@ -171,6 +179,17 @@ class DataPlan {
                                        int64* out_value);
 
     DISALLOW_COPY_AND_ASSIGN(DataPlan);
+};
+
+// interface to be implemented by delegates
+class DataPlanDelegate {
+  public:
+    virtual ~DataPlanDelegate() {}
+
+    // called when DataPlan object is updated
+    // |delta_bytes| is the number of bytes just used by current user
+    virtual void OnByteCounterUpdate(DataPlan *data_plan,
+                                     ByteCount delta_bytes) = 0;
 };
 
 }  // namespace cashew

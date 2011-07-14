@@ -21,6 +21,7 @@
 #include "src/metrics_manager.h"
 #include "src/property_changed_handler.h"
 #include "src/service.h"
+#include "src/user_aggregator.h"
 
 namespace cashew {
 
@@ -35,6 +36,7 @@ class ServiceImpl : public Service,
     ServiceImpl(ServiceManager * const parent,
                 DBus::Connection& connection,  // NOLINT
                 MetricsManager * const metrics_manager,
+                UserAggregator * const aggregator,
                 const DBus::Path& path);
     virtual ~ServiceImpl();
 
@@ -91,6 +93,9 @@ class ServiceImpl : public Service,
 
     // metrics manager to which we provide interesting stats
     MetricsManager * const metrics_manager_;
+
+    // aggregator
+    UserAggregator * const aggregator_;
 
     // D-Bus path for Flimflam service that we represent
     // this is our unique identifier

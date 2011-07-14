@@ -10,6 +10,7 @@
 #include "src/device.h"
 #include "src/policy.h"
 #include "src/service_manager.h"
+#include "src/user_aggregator_impl.h"
 
 namespace cashew {
 
@@ -72,10 +73,12 @@ static const guint kGetServicePropertiesIntervalSeconds = 1 * kSecondsPerMinute;
 ServiceImpl::ServiceImpl(ServiceManager * const parent,
                          DBus::Connection& connection,  // NOLINT
                          MetricsManager * const metrics_manager,
+                         UserAggregator * const aggregator,
                          const DBus::Path& path)
     : DBus::ObjectProxy(connection, path, kFlimflamServiceName),
       parent_(CHECK_NOTNULL(parent)), connection_(connection),
-      metrics_manager_(CHECK_NOTNULL(metrics_manager)), path_(path),
+      metrics_manager_(CHECK_NOTNULL(metrics_manager)),
+      aggregator_(CHECK_NOTNULL(aggregator)), path_(path),
       state_(kStateUnknown), type_(kTypeUnknown), device_(NULL),
       provider_(NULL), request_in_progress_(false),
       update_timeout_source_(NULL), policy_(NULL),
@@ -358,6 +361,8 @@ void ServiceImpl::OnRequestComplete(const DataPlanProvider *provider,
       continue;
     }
     LOG(INFO) << path_ << ": OnRequestComplete: converted plan[" << i << "]";
+    // notify |aggregator_| of the new DataPlan |plan|
+    aggregator_->OnNewDataPlan(plan);
     new_plans.push_back(plan);
   }
 

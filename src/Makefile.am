@@ -50,6 +50,10 @@ libcashew_la_SOURCES = \
   service_manager.cc \
   service_manager_impl.h \
   service_manager_impl.cc \
+  user_aggregator.h \
+  user_aggregator.cc \
+  user_aggregator_impl.h \
+  user_aggregator_impl.cc \
   values.h \
   values.cc
 
@@ -147,6 +151,7 @@ cashew_unittest_SOURCES = \
   procfs_byte_counter_unittest.cc \
   service_manager_mock.h \
   service_mock.h \
+  user_aggregator_unittest.cc \
   values_unittest.cc
 
 GMOCK_CFLAGS =

@@ -1,4 +1,4 @@
-// Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,6 +21,7 @@
 namespace cashew {
 
 class ServiceManager;
+class UserAggregator;
 
 // Implements Cashew D-Bus API
 class CashewServer : public org::chromium::Cashew_adaptor,
@@ -29,7 +30,8 @@ class CashewServer : public org::chromium::Cashew_adaptor,
   public:
     CashewServer(DBus::Connection& connection,  // NOLINT
                  ServiceManager * const service_manager,
-                 GMainLoop * const main_loop);
+                 GMainLoop * const main_loop,
+                 UserAggregator * const aggregator);
     virtual ~CashewServer();
 
     typedef std::map<std::string, int64_t> BytesPerItem;
@@ -67,6 +69,9 @@ class CashewServer : public org::chromium::Cashew_adaptor,
 
     // glib main loop
     GMainLoop * const main_loop_;
+
+    // aggregator
+    UserAggregator * const aggregator_;
 
     // Emit a DataPlansUpdate D-Bus signal for a service
     void EmitDataPlansUpdateSignal(const Service& service);

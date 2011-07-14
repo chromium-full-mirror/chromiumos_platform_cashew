@@ -14,9 +14,10 @@ namespace cashew {
 ServiceManager* ServiceManager::NewServiceManager(
                                        DBus::Connection& connection,  // NOLINT
                                        GMainLoop * const main_loop,
-                                       MetricsManager * const metrics_manager) {
+                                       MetricsManager * const metrics_manager,
+                                       UserAggregator * const aggregator) {
   return new(std::nothrow) ServiceManagerImpl(connection, main_loop,
-                                              metrics_manager);
+                                              metrics_manager, aggregator);
 }
 
 }  // namespace cashew

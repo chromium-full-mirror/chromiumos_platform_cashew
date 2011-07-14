@@ -14,6 +14,7 @@
 #include <dbus-c++/dbus.h>    // NOLINT
 
 #include "src/data_plan.h"
+#include "src/user_aggregator.h"
 
 namespace cashew {
 
@@ -99,6 +100,7 @@ class Service {
     static Service* NewService(ServiceManager * const parent,
                                DBus::Connection& connection,  // NOLINT
                                MetricsManager * const metrics_manager,
+                               UserAggregator * const aggregator,
                                const DBus::Path& path);
 
   private:

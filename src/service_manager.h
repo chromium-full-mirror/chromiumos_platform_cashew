@@ -62,7 +62,8 @@ class ServiceManager {
     static ServiceManager* NewServiceManager(
                                         DBus::Connection& connection,  // NOLINT
                                         GMainLoop * const main_loop,
-                                        MetricsManager * const metrics_manager);
+                                        MetricsManager * const metrics_manager,
+                                        UserAggregator * const aggregator);
 
   private:
     DISALLOW_COPY_AND_ASSIGN(ServiceManager);
