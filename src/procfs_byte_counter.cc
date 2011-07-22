@@ -192,8 +192,8 @@ bool ProcfsByteCounter::ReadStats() {
     }
     // we found a match
     // update our counter based on new stats
-    OnStatsUpdate(stats);
     CloseProcNetDev();
+    OnStatsUpdate(stats);
     return true;
   }
   LOG(ERROR) << interface_ << ": ReadStats: no matching device";
@@ -216,6 +216,7 @@ void ProcfsByteCounter::OnStatsUpdate(const struct netdev_stats& stats) {
     // nature of unsigned subtraction
     counter_rx_bytes_ += stats.rx_bytes - baseline_stats_.rx_bytes;
     counter_tx_bytes_ += stats.tx_bytes - baseline_stats_.tx_bytes;
+    baseline_stats_ = stats;
     LOG(INFO) << interface_ << ": OnStatsUpdate: new counter: rx_bytes = "
         << counter_rx_bytes_ << ", tx_bytes = " << counter_tx_bytes_;
     bool counter_changed = counter_rx_bytes_ != old_counter_rx_bytes ||
@@ -223,15 +224,19 @@ void ProcfsByteCounter::OnStatsUpdate(const struct netdev_stats& stats) {
     if (delegate_ != NULL && counter_changed) {
       delegate_->OnByteCounterUpdate(this, counter_rx_bytes_,
                                      counter_tx_bytes_);
+      // NOTE: OnByteCounterUpdate can cause this counter to be deleted, so
+      // we're limited in what we can do beyond this point. See this FAQ:
+      // http://www.parashift.com/c++-faq-lite/freestore-mgmt.html#faq-16.15
     }
   } else {
+    // We initialize the baseline here and update it on on each new sample so
+    // that we aren't confused about how many times the device counter has
+    // wrapped around since we've started. This works as long as the sample
+    // interval is short enough to prevent wrap around between consecutive
+    // samples.
+    baseline_stats_ = stats;
     baseline_initialized_ = true;
   }
-  // We update the baseline on each new sample so that we aren't confused about
-  // how many times the device counter has wrapped around since we've started.
-  // This works as long as the sample interval is short enough to prevent wrap
-  // around between consecutive samples.
-  baseline_stats_ = stats;
 }
 
 }  // namespace cashew
