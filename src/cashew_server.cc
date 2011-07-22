@@ -71,7 +71,7 @@ void CashewServer::ReportBytesUsed(const int64_t& bytes,
   return;
 }
 
-CashewServer::BytesPerItem CashewServer::GetByteUsageData (
+CashewServer::BytesPerItem CashewServer::GetByteUsageData(
     DBus::Error &error) {  // NOLINT
   CashewServer::BytesPerItem to_return;
   return to_return;

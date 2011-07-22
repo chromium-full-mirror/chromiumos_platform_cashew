@@ -1,4 +1,4 @@
-// Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -51,29 +51,29 @@ class ProcfsByteCounter: public ByteCounter {
     // This used to be exported by the kernel, but isn't any more, so we make
     // our own definition here.
     struct netdev_stats {
-        unsigned long   rx_packets;
-        unsigned long   tx_packets;
-        unsigned long   rx_bytes;
-        unsigned long   tx_bytes;
-        unsigned long   rx_errors;
-        unsigned long   tx_errors;
-        unsigned long   rx_dropped;
-        unsigned long   tx_dropped;
-        unsigned long   multicast;
-        unsigned long   collisions;
-        unsigned long   rx_length_errors;
-        unsigned long   rx_over_errors;
-        unsigned long   rx_crc_errors;
-        unsigned long   rx_frame_errors;
-        unsigned long   rx_fifo_errors;
-        unsigned long   rx_missed_errors;
-        unsigned long   tx_aborted_errors;
-        unsigned long   tx_carrier_errors;
-        unsigned long   tx_fifo_errors;
-        unsigned long   tx_heartbeat_errors;
-        unsigned long   tx_window_errors;
-        unsigned long   rx_compressed;
-        unsigned long   tx_compressed;
+      uint64 rx_packets;
+      uint64 tx_packets;
+      uint64 rx_bytes;
+      uint64 tx_bytes;
+      uint64 rx_errors;
+      uint64 tx_errors;
+      uint64 rx_dropped;
+      uint64 tx_dropped;
+      uint64 multicast;
+      uint64 collisions;
+      uint64 rx_length_errors;
+      uint64 rx_over_errors;
+      uint64 rx_crc_errors;
+      uint64 rx_frame_errors;
+      uint64 rx_fifo_errors;
+      uint64 rx_missed_errors;
+      uint64 tx_aborted_errors;
+      uint64 tx_carrier_errors;
+      uint64 tx_fifo_errors;
+      uint64 tx_heartbeat_errors;
+      uint64 tx_window_errors;
+      uint64 rx_compressed;
+      uint64 tx_compressed;
     };
 
     // baseline stats against which we'll compare our next update
