@@ -478,9 +478,9 @@ void ServiceImpl::OnStateUpdate(const std::string& state) {
   LOG(INFO) << path_ << ": OnStateUpdate: state = " << state;
   Service::State old_state = state_;
   state_ = StateFromString(state);
-  if (old_state != kStateReady && IsConnected()) {
+  if (!IsConnectedState(old_state) && IsConnected()) {
     OnConnected();
-  } else if (old_state == kStateReady && !IsConnected()) {
+  } else if (IsConnectedState(old_state) && !IsConnected()) {
     OnDisconnected();
   }
 }
@@ -762,8 +762,13 @@ void ServiceImpl::OnCrosUsageErrorResult(const std::string& status) {
   // TODO(vlaviano): hook for future use
 }
 
+// static
+bool ServiceImpl::IsConnectedState(State state) {
+  return (state == kStateReady || state == kStateOnline);
+}
+
 bool ServiceImpl::IsConnected() const {
-  return (state_ == kStateReady || state_ == kStateOnline);
+  return IsConnectedState(state_);
 }
 
 void ServiceImpl::OnConnected() {

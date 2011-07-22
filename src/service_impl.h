@@ -208,6 +208,9 @@ class ServiceImpl : public Service,
     // usage API request returned an error result
     void OnCrosUsageErrorResult(const std::string& status);
 
+    // does |state| represent a connected state?
+    static bool IsConnectedState(State state);
+
     // do we think that we're connected at this time?
     bool IsConnected() const;
 
