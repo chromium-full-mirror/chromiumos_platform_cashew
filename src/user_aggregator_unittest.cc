@@ -40,6 +40,7 @@ const char UserAggregatorTest::delimiter_ = '\t';
 // Tests
 
 // tests for |StringFromMap| and |MapFromString|:
+
 // empty table
 TEST_F(UserAggregatorTest, EmptyFileMapStringConversion) {
   std::string empty_str;
@@ -55,6 +56,7 @@ TEST_F(UserAggregatorTest, EmptyFileMapStringConversion) {
                             &table_map_from_str, delimiter_));
   ASSERT_TRUE(table_map_from_str.empty());
 }
+
 // well formed table
 TEST_F(UserAggregatorTest, WellFormedMapStringConversion) {
   std::string table_str;
@@ -86,21 +88,21 @@ TEST_F(UserAggregatorTest, WellFormedMapStringConversion) {
                             &table_map_from_str, delimiter_));
   ASSERT_TRUE(table_map == table_map_from_str);
 }
+
 // TODO(mikemeko): multiple empty lines (should be ok)
 TEST_F(UserAggregatorTest, EmptyLinesMapStringConversion) {
-
 }
+
 // TODO(mikemeko): no |delimiter_| in a line
 TEST_F(UserAggregatorTest, NoDelimiterMapStringConversion) {
-
 }
+
 // TODO(mikemeko): invalid bytes entry for a user
 TEST_F(UserAggregatorTest, InvalidBytesEntryMapStringConversion) {
-
 }
+
 // TODO(mikemeko): multiple occurrences of same user
 TEST_F(UserAggregatorTest, MultipleOccurenceMapStringConversion) {
-
 }
 
 // test for |Exists|, |ReadFile|, and |WriteToFile|:
