@@ -10,7 +10,7 @@ namespace cashew {
 
 // UMA metric names
 static const char *kUsageRequestStatusMetric =
-    "Cros.Network.Cashew.UsageRequestStatus";
+    "Network.Cellular.UsageRequestStatus";
 
 MetricsManagerImpl::MetricsManagerImpl() {
   metrics_library_.Init();

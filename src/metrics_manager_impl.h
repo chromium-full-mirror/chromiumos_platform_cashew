@@ -17,7 +17,7 @@ class MetricsManagerImpl : public MetricsManager {
     MetricsManagerImpl();
     virtual ~MetricsManagerImpl();
 
-    // Cros.Network.Cashew.UsageRequestStatus
+    // Network.Cellular.UsageRequestStatus
     virtual void OnUsageRequestStatusSample(UsageRequestStatus status);
 
   private:

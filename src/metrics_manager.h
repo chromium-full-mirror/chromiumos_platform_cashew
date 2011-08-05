@@ -16,7 +16,7 @@ class MetricsManager {
     MetricsManager() {}
     virtual ~MetricsManager() {}
 
-    // Cros.Network.Cashew.UsageRequestStatus UMA enum
+    // Network.Cellular.UsageRequestStatus UMA enum
     typedef enum {
       kUsageRequestStatusFailed = 0,
       kUsageRequestStatusOk,
