@@ -14,10 +14,10 @@
 #include <dbus-c++/dbus.h>    // NOLINT
 
 #include "src/data_plan.h"
-#include "src/user_aggregator.h"
 
 namespace cashew {
 
+class Aggregator;
 class Device;
 class MetricsManager;
 class Policy;
@@ -90,6 +90,15 @@ class Service {
     // we've received updated byte counter info from our child Device
     virtual void OnByteCounterUpdate(uint64 rx_bytes, uint64 tx_bytes) = 0;
 
+    // we've received a notification from our child Device that the
+    //     byte counter has been stopped
+    virtual void OnByteCounterStopped() = 0;
+
+    // we've received a notification from our child Device that the
+    //     byte counter has been reset
+    virtual void OnByteCounterReset(uint64 new_rx_bytes,
+                                    uint64 new_tx_bytes) = 0;
+
     // Service Manager methods
 
     // we've received an update from our parent about whether or not we're the
@@ -100,7 +109,7 @@ class Service {
     static Service* NewService(ServiceManager * const parent,
                                DBus::Connection& connection,  // NOLINT
                                MetricsManager * const metrics_manager,
-                               UserAggregator * const aggregator,
+                               Aggregator * const aggregator,
                                const DBus::Path& path);
 
   private:

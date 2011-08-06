@@ -2,27 +2,30 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "src/user_aggregator.h"
+#include "src/aggregator.h"
 
 #include <glog/logging.h>
 
-#include "src/user_aggregator_impl.h"
+#include "src/aggregator_impl.h"
 
 namespace cashew {
 
 // static
-UserAggregator* UserAggregator::NewUserAggregator() {
-  UserAggregatorImpl *aggregator = new(std::nothrow) UserAggregatorImpl();
+Aggregator* Aggregator::NewAggregator() {
+  // create aggregator
+  AggregatorImpl *aggregator = new(std::nothrow) AggregatorImpl();
   if (aggregator == NULL) {
-    LOG(ERROR) << "NewUserAggregator: could not create user aggregator";
+    LOG(ERROR) << "NewAggregator: failed to create aggregator";
     return NULL;
   }
+
   // initialize aggregator
   if (!aggregator->Init()) {
-    LOG(ERROR) << "NewUserAggregator: could not initialize user aggregator";
+    LOG(ERROR) << "NewAggregator: failed to initialize aggregator";
     delete aggregator;
     return NULL;
   }
+
   return aggregator;
 }
 

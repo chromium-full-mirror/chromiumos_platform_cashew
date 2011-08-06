@@ -21,9 +21,10 @@
 #include "src/metrics_manager.h"
 #include "src/property_changed_handler.h"
 #include "src/service.h"
-#include "src/user_aggregator.h"
 
 namespace cashew {
+
+class Aggregator;
 
 // represents a cellular service and monitors Flimflam state for that service
 class ServiceImpl : public Service,
@@ -36,7 +37,7 @@ class ServiceImpl : public Service,
     ServiceImpl(ServiceManager * const parent,
                 DBus::Connection& connection,  // NOLINT
                 MetricsManager * const metrics_manager,
-                UserAggregator * const aggregator,
+                Aggregator * const aggregator,
                 const DBus::Path& path);
     virtual ~ServiceImpl();
 
@@ -70,6 +71,14 @@ class ServiceImpl : public Service,
     // we've received updated byte counter info from our child Device
     virtual void OnByteCounterUpdate(uint64 rx_bytes, uint64 tx_bytes);
 
+    // we've received a notification from our child Device that the
+    //     byte counter has been stopped
+    virtual void OnByteCounterStopped();
+
+    // we've received a notification from our child Device that the
+    //     byte counter has been reset
+    virtual void OnByteCounterReset(uint64 new_rx_bytes, uint64 new_tx_bytes);
+
     // DataPlanProviderDelegate methods
 
     // a request to our carrier usage API proxy has completed
@@ -95,7 +104,11 @@ class ServiceImpl : public Service,
     MetricsManager * const metrics_manager_;
 
     // aggregator
-    UserAggregator * const aggregator_;
+    Aggregator * const aggregator_;
+
+    // byte counts reported on the previous byte counter update
+    uint64 prev_rx_bytes_;
+    uint64 prev_tx_bytes_;
 
     // D-Bus path for Flimflam service that we represent
     // this is our unique identifier

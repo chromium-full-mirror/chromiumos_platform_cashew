@@ -13,6 +13,10 @@
 noinst_LTLIBRARIES = libcashew.la
 
 libcashew_la_SOURCES = \
+  aggregator.h \
+  aggregator.cc \
+  aggregator_impl.h \
+  aggregator_impl.cc \
   byte_counter.h \
   byte_counter.cc \
   cashew_server.h \
@@ -21,6 +25,8 @@ libcashew_la_SOURCES = \
   data_plan.cc \
   data_plan_provider.h \
   data_plan_provider.cc \
+  date.h \
+  date.cc \
   default_policy.h \
   default_policy.cc \
   device.h \
@@ -50,10 +56,6 @@ libcashew_la_SOURCES = \
   service_manager.cc \
   service_manager_impl.h \
   service_manager_impl.cc \
-  user_aggregator.h \
-  user_aggregator.cc \
-  user_aggregator_impl.h \
-  user_aggregator_impl.cc \
   values.h \
   values.cc
 
@@ -143,15 +145,16 @@ cashewd_LDADD = \
 check_PROGRAMS = cashew_unittest
 
 cashew_unittest_SOURCES = \
+  aggregator_unittest.cc \
   cashew_unittest.cc \
   data_plan_unittest.cc \
+  date_unittest.cc \
   default_policy_unittest.cc \
   device_mock.h \
   json_reader_unittest.cc \
   procfs_byte_counter_unittest.cc \
   service_manager_mock.h \
   service_mock.h \
-  user_aggregator_unittest.cc \
   values_unittest.cc
 
 GMOCK_CFLAGS =

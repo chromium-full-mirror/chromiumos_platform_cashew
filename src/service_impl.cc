@@ -6,11 +6,11 @@
 
 #include <glog/logging.h>
 
+#include "src/aggregator.h"
 #include "src/data_plan_provider.h"
 #include "src/device.h"
 #include "src/policy.h"
 #include "src/service_manager.h"
-#include "src/user_aggregator_impl.h"
 
 namespace cashew {
 
@@ -73,13 +73,14 @@ static const guint kGetServicePropertiesIntervalSeconds = 1 * kSecondsPerMinute;
 ServiceImpl::ServiceImpl(ServiceManager * const parent,
                          DBus::Connection& connection,  // NOLINT
                          MetricsManager * const metrics_manager,
-                         UserAggregator * const aggregator,
+                         Aggregator * const aggregator,
                          const DBus::Path& path)
     : DBus::ObjectProxy(connection, path, kFlimflamServiceName),
       parent_(CHECK_NOTNULL(parent)), connection_(connection),
       metrics_manager_(CHECK_NOTNULL(metrics_manager)),
-      aggregator_(CHECK_NOTNULL(aggregator)), path_(path),
-      state_(kStateUnknown), type_(kTypeUnknown), device_(NULL),
+      aggregator_(CHECK_NOTNULL(aggregator)), prev_rx_bytes_(0),
+      prev_tx_bytes_(0), path_(path), state_(kStateUnknown),
+      type_(kTypeUnknown), device_(NULL),
       provider_(NULL), request_in_progress_(false),
       update_timeout_source_(NULL), policy_(NULL),
       is_default_service_(false), get_properties_source_id_(0),
@@ -255,12 +256,46 @@ void ServiceImpl::OnCarrierUpdate(const std::string& carrier) {
 void ServiceImpl::OnByteCounterUpdate(uint64 rx_bytes, uint64 tx_bytes) {
   LOG(INFO) << path_ << ": OnByteCounterUpdate: rx_bytes = " << rx_bytes
       << ", tx_bytes = " << tx_bytes;
+
+  // try to detect overflow
+  if (rx_bytes < prev_rx_bytes_) {
+    LOG(WARNING) << path_ << ": OnByteCounterUpdate: overflow detected:"
+        " |rx_bytes|";
+    rx_bytes = kuint64max;
+  }
+  if (tx_bytes < prev_tx_bytes_) {
+    LOG(WARNING) << path_ << ": OnByteCounterUpdate: overflow detected:"
+        " |tx_bytes|";
+    tx_bytes = kuint64max;
+  }
+
+  // pass along byte counter info to |aggregator_|
+  uint64 delta_rx_bytes = rx_bytes - prev_rx_bytes_;
+  uint64 delta_tx_bytes = tx_bytes - prev_tx_bytes_;
+  aggregator_->OnByteCounterUpdate(this, delta_rx_bytes, delta_tx_bytes);
+
+  // update prev counts
+  prev_rx_bytes_ = rx_bytes;
+  prev_tx_bytes_ = tx_bytes;
+
   // dispatch this notification to our data plans list and consider sending
   // out a signal if any plans were updated
   if (DataPlan::OnByteCounterUpdate(&data_plans_, this, parent_, device_,
                                     rx_bytes, tx_bytes)) {
     MaybeEmitDataPlansUpdate();
   }
+}
+
+void ServiceImpl::OnByteCounterStopped() {
+  // reset previous byte counter info trackers
+  prev_rx_bytes_ = 0;
+  prev_tx_bytes_ = 0;
+}
+
+void ServiceImpl::OnByteCounterReset(uint64 new_rx_bytes, uint64 new_tx_bytes) {
+  // reset previous byte counter info trackers
+  prev_rx_bytes_ = new_rx_bytes;
+  prev_tx_bytes_ = new_tx_bytes;
 }
 
 // DataPlanProviderDelegate methods
@@ -361,8 +396,6 @@ void ServiceImpl::OnRequestComplete(const DataPlanProvider *provider,
       continue;
     }
     LOG(INFO) << path_ << ": OnRequestComplete: converted plan[" << i << "]";
-    // notify |aggregator_| of the new DataPlan |plan|
-    aggregator_->OnNewDataPlan(plan);
     new_plans.push_back(plan);
   }
 

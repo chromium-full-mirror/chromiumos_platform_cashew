@@ -23,6 +23,8 @@ class ServiceMock : public Service {
     MOCK_CONST_METHOD0(IsDefaultService, bool());
     MOCK_METHOD1(OnCarrierUpdate, void(const std::string& carrier));
     MOCK_METHOD2(OnByteCounterUpdate, void(uint64 rx_bytes, uint64 tx_bytes));
+    MOCK_METHOD0(OnByteCounterStopped, void());
+    MOCK_METHOD2(OnByteCounterReset, void(uint64 rx_bytes, uint64 tx_bytes));
     MOCK_METHOD1(OnDefaultServiceUpdate, void(bool is_default_service));
 };
 

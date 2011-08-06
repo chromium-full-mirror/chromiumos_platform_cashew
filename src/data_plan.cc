@@ -51,8 +51,7 @@ DataPlan::DataPlan(const std::string& name, DataPlan::Type type,
     : name_(name), type_(type), update_time_(update_time),
       start_time_(start_time), end_time_(end_time),
       data_bytes_max_(data_bytes_max), data_bytes_used_(data_bytes_used),
-      local_bytes_used_(0), total_bytes_used_(data_bytes_used),
-      delegate_(NULL) {
+      local_bytes_used_(0), total_bytes_used_(data_bytes_used) {
       CHECK_GE(data_bytes_max_, 0);
       CHECK_GE(data_bytes_used_, 0);
 }
@@ -99,17 +98,10 @@ ByteCount DataPlan::GetTotalBytesUsed() const {
 // (when it is implemented in a future CL) if the plan is fully consumed
 void DataPlan::SetLocalBytesUsed(ByteCount local_bytes_used) {
   CHECK_GE(local_bytes_used, 0);
-
-  // update delegate with bytes just used
-  if (delegate_ != NULL) {
-    ByteCount delta_bytes = local_bytes_used - local_bytes_used_;
-    delegate_->OnByteCounterUpdate(this, delta_bytes);
-  }
-
   local_bytes_used_ = local_bytes_used;
   total_bytes_used_ = data_bytes_used_ + local_bytes_used_;
   if (total_bytes_used_ < 0) {
-    LOG(WARNING) << "SetLocalBytesUsed: overflow detected";
+    LOG(WARNING) << "SetLocalBytesUsed: overflow detected: |total_bytes_used|";
     total_bytes_used_ = kint64max;
   }
 }
@@ -150,10 +142,6 @@ DBusDataPlan DataPlan::ToDBusFormat() const {
   // plus any local traffic that we've measured since then
   plan[kCellularDataPlanDataBytesUsed].writer().append_int64(total_bytes_used_);
   return plan;
-}
-
-void DataPlan::SetDelegate(DataPlanDelegate *delegate) {
-  delegate_ = delegate;
 }
 
 // static
@@ -358,7 +346,8 @@ bool DataPlan::OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
   if (local_bytes_used < 0 ||
       static_cast<uint64>(local_bytes_used) < rx_bytes ||
       static_cast<uint64>(local_bytes_used) < tx_bytes) {
-    LOG(WARNING) << "OnByteCounterUpdate: overflow detected";
+    LOG(WARNING) << "OnByteCounterUpdate: overflow detected:"
+        " |local_bytes_used|";
     return false;
   }
   // compute delta since last sample

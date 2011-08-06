@@ -165,6 +165,23 @@ void DeviceImpl::OnByteCounterUpdate(const ByteCounter *counter,
   parent_->OnByteCounterUpdate(rx_bytes, tx_bytes);
 }
 
+void DeviceImpl::OnByteCounterStopped(const ByteCounter *counter) {
+  DCHECK(byte_counter_ != NULL);
+  DCHECK(counter == byte_counter_);
+  LOG(INFO) << path_ << ": OnByteCounterStopped: byte counter stopped";
+  parent_->OnByteCounterStopped();
+}
+
+void DeviceImpl::OnByteCounterReset(const ByteCounter *counter,
+    uint64 new_rx_bytes, uint64 new_tx_bytes) {
+  DCHECK(byte_counter_running_);
+  DCHECK(byte_counter_ != NULL);
+  DCHECK(counter == byte_counter_);
+  LOG(INFO) << path_ << ": OnByteCounterReset: byte counter reset: "
+    "new_rx_bytes: " << new_rx_bytes << ", new_tx_bytes: " << new_tx_bytes;
+  parent_->OnByteCounterReset(new_rx_bytes, new_tx_bytes);
+}
+
 // Private methods
 
 Device::Type DeviceImpl::TypeFromString(const std::string& type) const {

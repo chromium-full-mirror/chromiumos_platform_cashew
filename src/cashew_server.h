@@ -20,8 +20,8 @@
 
 namespace cashew {
 
+class Aggregator;
 class ServiceManager;
-class UserAggregator;
 
 // Implements Cashew D-Bus API
 class CashewServer : public org::chromium::Cashew_adaptor,
@@ -31,7 +31,7 @@ class CashewServer : public org::chromium::Cashew_adaptor,
     CashewServer(DBus::Connection& connection,  // NOLINT
                  ServiceManager * const service_manager,
                  GMainLoop * const main_loop,
-                 UserAggregator * const aggregator);
+                 Aggregator * const aggregator);
     virtual ~CashewServer();
 
     typedef std::map<std::string, int64_t> BytesPerItem;
@@ -71,7 +71,7 @@ class CashewServer : public org::chromium::Cashew_adaptor,
     GMainLoop * const main_loop_;
 
     // aggregator
-    UserAggregator * const aggregator_;
+    Aggregator * const aggregator_;
 
     // Emit a DataPlansUpdate D-Bus signal for a service
     void EmitDataPlansUpdateSignal(const Service& service);

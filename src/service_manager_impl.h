@@ -31,7 +31,7 @@ class ServiceManagerImpl : public ServiceManager,
     ServiceManagerImpl(DBus::Connection& connection,  // NOLINT
                        GMainLoop * const main_loop,
                        MetricsManager * const metrics_manager,
-                       UserAggregator * const aggregator);
+                       Aggregator * const aggregator);
     virtual ~ServiceManagerImpl();
 
     // ServiceManager methods
@@ -75,7 +75,7 @@ class ServiceManagerImpl : public ServiceManager,
     MetricsManager * const metrics_manager_;
 
     // aggregator
-    UserAggregator * const aggregator_;
+    Aggregator * const aggregator_;
 
     // collection of Service objs representing cellular services
     ServiceMap services_;

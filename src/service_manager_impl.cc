@@ -31,7 +31,7 @@ static const guint kGetFlimflamPropertiesIntervalSeconds =
 ServiceManagerImpl::ServiceManagerImpl(DBus::Connection& connection,  // NOLINT
                                        GMainLoop * const main_loop,
                                        MetricsManager * const metrics_manager,
-                                       UserAggregator * const aggregator)
+                                       Aggregator * const aggregator)
     : DBus::ObjectProxy(connection, kFlimflamManagerPath,
                         kFlimflamManagerName),
       connection_(connection), main_loop_(CHECK_NOTNULL(main_loop)),

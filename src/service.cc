@@ -19,7 +19,7 @@ Service::Type Service::TypeFromString(const std::string& type) {
 Service* Service::NewService(ServiceManager * const parent,
                              DBus::Connection& connection,  // NOLINT
                              MetricsManager * const metrics_manager,
-                             UserAggregator * const aggregator,
+                             Aggregator * const aggregator,
                              const DBus::Path& path) {
   DCHECK(parent != NULL);
   return new(std::nothrow) ServiceImpl(parent, connection, metrics_manager,

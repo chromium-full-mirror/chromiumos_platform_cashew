@@ -44,9 +44,16 @@ class ByteCounterDelegate {
   public:
     virtual ~ByteCounterDelegate() {}
 
-    // called when byte counter is updated
+    // called when |counter| is updated
     virtual void OnByteCounterUpdate(const ByteCounter *counter,
                                      uint64 rx_bytes, uint64 tx_bytes) = 0;
+
+    // called when |counter| is stopped
+    virtual void OnByteCounterStopped(const ByteCounter *counter) = 0;
+
+    // called when |counter| is reset
+    virtual void OnByteCounterReset(const ByteCounter *counter,
+        uint64 new_rx_bytes, uint64 new_tx_bytes) = 0;
 };
 
 }  // namespace cashew

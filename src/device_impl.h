@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -58,9 +58,16 @@ class DeviceImpl : public Device,
 
     // ByteCounterDelegate methods
 
-    // called when byte counter is updated
+    // called when |counter| is updated
     virtual void OnByteCounterUpdate(const ByteCounter *counter,
                                      uint64 rx_bytes, uint64 tx_bytes);
+
+    // called when |counter| is stopped
+    virtual void OnByteCounterStopped(const ByteCounter *counter);
+
+    // called when |counter| is reset
+    virtual void OnByteCounterReset(const ByteCounter *counter,
+        uint64 new_rx_bytes, uint64 new_tx_bytes);
 
   private:
     // back pointer to our parent Service

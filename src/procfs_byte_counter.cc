@@ -55,6 +55,8 @@ ProcfsByteCounter::~ProcfsByteCounter() {
   if (read_stats_source_id_ != 0 && !g_source_remove(read_stats_source_id_)) {
     LOG(WARNING) << interface_ << ": dtor: g_source_remove_failed";
   }
+  // notify delegate that byte counter has been stopped
+  delegate_->OnByteCounterStopped(this);
 }
 
 const std::string& ProcfsByteCounter::GetInterface() const {
@@ -68,6 +70,8 @@ uint64 ProcfsByteCounter::GetRxBytes() const {
 void ProcfsByteCounter::SetRxBytes(uint64 rx_bytes) {
   LOG(INFO) << interface_ << ": SetRxBytes: rx_bytes = " << rx_bytes;
   counter_rx_bytes_ = rx_bytes;
+  // notify delegate that byte counter has been reset
+  delegate_->OnByteCounterReset(this, rx_bytes, counter_tx_bytes_);
 }
 
 uint64 ProcfsByteCounter::GetTxBytes() const {
@@ -77,6 +81,8 @@ uint64 ProcfsByteCounter::GetTxBytes() const {
 void ProcfsByteCounter::SetTxBytes(uint64 tx_bytes) {
   LOG(INFO) << interface_ << ": SetTxBytes: tx_bytes = " << tx_bytes;
   counter_tx_bytes_ = tx_bytes;
+  // notify delegate that byte counter has been reset
+  delegate_->OnByteCounterReset(this, counter_rx_bytes_, tx_bytes);
 }
 
 void ProcfsByteCounter::SetDelegate(ByteCounterDelegate *delegate) {

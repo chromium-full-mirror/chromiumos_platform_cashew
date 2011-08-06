@@ -16,10 +16,10 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "src/aggregator.h"
 #include "src/cashew_server.h"
 #include "src/metrics_manager.h"
 #include "src/service_manager.h"
-#include "src/user_aggregator.h"
 
 namespace cashew {
 
@@ -44,7 +44,7 @@ int InstallSignalHandler(const Signal signal,
 static GMainLoop *main_loop = NULL;
 static DBus::Glib::BusDispatcher *dispatcher = NULL;
 static MetricsManager *metrics_manager = NULL;
-static UserAggregator *aggregator = NULL;
+static Aggregator *aggregator = NULL;
 static ServiceManager *service_manager = NULL;
 static CashewServer *server = NULL;
 
@@ -139,10 +139,10 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  LOG(INFO) << "creating user aggregator";
-  cashew::aggregator = cashew::UserAggregator::NewUserAggregator();
+  LOG(INFO) << "creating aggregator";
+  cashew::aggregator = cashew::Aggregator::NewAggregator();
   if (cashew::aggregator == NULL) {
-    LOG(ERROR) << "couldn't create user aggregator";
+    LOG(ERROR) << "couldn't create aggregator";
     cashew::CleanUpForExit();
     exit(EXIT_FAILURE);
   }
