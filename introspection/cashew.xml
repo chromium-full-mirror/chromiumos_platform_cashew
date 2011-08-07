@@ -118,26 +118,13 @@
       </tp:possible-errors>
     </method>
 
-    <method name="ReportBytesUsed">
+    <method name="RequestCellularUsageInfo">
       <tp:docstring>
-        Chrome invokes this method to pass on the information to Cashew about the
-        number of bytes used by the current user.
+        Request cellular usage statistics
       </tp:docstring>
-      <arg name="bytes" type="x" direction="in" tp:type="Bytes">
+      <arg name="usage" type="a{sx}" direction="in">
         <tp:docstring>
-          Bytes used by this user.
-        </tp:docstring>
-      </arg>
-    </method>
-
-    <method name="GetByteUsageData">
-      <tp:docstring>
-        Returns the number of bytes used per user for each user.
-      </tp:docstring>
-      <arg name="BytesPerUser" type="a{sx}" direction="out" tp:type="BytesPerItem">
-        <tp:docstring>
-          An array of String(User)-Integer(Bytes) pairs representing bytes per user
-          for all users on the machine.
+          Structure that maps dates to usage (in bytes)
         </tp:docstring>
       </arg>
     </method>

@@ -131,6 +131,12 @@ void AggregatorImpl::OnByteCounterUpdate(const Service *service,
   }
 }
 
+void AggregatorImpl::GetBytesPerDay(
+                            const std::map<std::string, int64_t>& day_usage) {
+    // TODO(mikemeko): fill this function to return whatever structure
+    // contains our bytes per day info.
+}
+
 // private
 
 // static

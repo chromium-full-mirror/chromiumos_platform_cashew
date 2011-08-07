@@ -7,6 +7,9 @@
 
 #include <base/basictypes.h>
 
+#include <map>
+#include <string>
+
 namespace cashew {
 
 class Service;
@@ -21,6 +24,9 @@ class Aggregator {
     // we are given the bytes used since the last byte counter update
     virtual void OnByteCounterUpdate(const Service *service,
         uint64 delta_rx_bytes, uint64 delta_tx_bytes) = 0;
+
+    virtual void GetBytesPerDay(
+                       const std::map<std::string, int64_t>& day_usage)= 0;
 
     // factory
     static Aggregator* NewAggregator();

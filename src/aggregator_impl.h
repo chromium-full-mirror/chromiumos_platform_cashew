@@ -44,6 +44,10 @@ class AggregatorImpl : public Aggregator {
     virtual void OnByteCounterUpdate(const Service *service,
         uint64 delta_rx_bytes, uint64 delta_tx_bytes);
 
+    // returns a map of date strings to bytes used
+    virtual void GetBytesPerDay(
+                      const std::map<std::string, int64_t>& day_usage);
+
   private:
 
     // have I been successfully initialized via Init()?

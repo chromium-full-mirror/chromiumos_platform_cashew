@@ -46,12 +46,10 @@ class CashewServer : public org::chromium::Cashew_adaptor,
     virtual void RequestDataPlansUpdate(const std::string& service_path,
                                         DBus::Error& error);  // NOLINT
 
-    // Report the number of bytes used by the current user
-    virtual void ReportBytesUsed(const int64_t& bytes,
-                                 DBus::Error &error);  // NOLINT
-
-    // Request total bytes used per user
-    virtual BytesPerItem GetByteUsageData(DBus::Error &error);  // NOLINT
+    // Called from Chrome when user wants usage information
+    virtual void RequestCellularUsageInfo(
+                        const std::map<std::string, int64_t>& day_usage,
+                        DBus::Error& error);  // NOLINT
 
     // Test method to verify that Cashew service is working
     virtual bool IsAlive(DBus::Error& error);  // NOLINT

@@ -69,15 +69,11 @@ void CashewServer::RequestDataPlansUpdate(const std::string& service_path,
   EmitDataPlansUpdateSignal(*service);
 }
 
-void CashewServer::ReportBytesUsed(const int64_t& bytes,
-                                   DBus::Error &error) { // NOLINT
-  return;
-}
-
-CashewServer::BytesPerItem CashewServer::GetByteUsageData(
-    DBus::Error &error) {  // NOLINT
-  CashewServer::BytesPerItem to_return;
-  return to_return;
+void CashewServer::RequestCellularUsageInfo(
+                           const std::map<std::string, int64_t>& day_usage,
+                           DBus::Error& error) {  // NOLINT
+  LOG(INFO) << "RequestCellularUsageInfo called";
+  aggregator_->GetBytesPerDay(day_usage);
 }
 
 bool CashewServer::IsAlive(DBus::Error& error) {  // NOLINT
