@@ -47,9 +47,8 @@ class CashewServer : public org::chromium::Cashew_adaptor,
                                         DBus::Error& error);  // NOLINT
 
     // Called from Chrome when user wants usage information
-    virtual void RequestCellularUsageInfo(
-                        std::map<std::string, int64_t>& day_usage,
-                        DBus::Error& error);  // NOLINT
+    virtual std::map<std::string, int64_t> RequestCellularUsageInfo(
+                                                 DBus::Error& error);  // NOLINT
 
     // Test method to verify that Cashew service is working
     virtual bool IsAlive(DBus::Error& error);  // NOLINT

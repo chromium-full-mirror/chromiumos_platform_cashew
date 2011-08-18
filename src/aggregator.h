@@ -27,8 +27,7 @@ class Aggregator {
 
     // takes a map of strings to int64s and sets it to the dates for the past
     // year and their corresponding byte count.
-    virtual void GetBytesPerDay(
-                       std::map<std::string, int64_t>& day_usage)= 0;  //NOLINT
+    virtual std::map<std::string, int64_t> GetBytesPerDay() = 0;
 
     // factory
     static Aggregator* NewAggregator();

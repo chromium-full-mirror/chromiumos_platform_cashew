@@ -45,8 +45,7 @@ class AggregatorImpl : public Aggregator {
         uint64 delta_rx_bytes, uint64 delta_tx_bytes);
 
     // returns a map of date strings to bytes used
-    virtual void GetBytesPerDay(
-                         std::map<std::string, int64_t>& day_usage);  // NOLINT
+    virtual std::map<std::string, int64_t> GetBytesPerDay();
 
   private:
 

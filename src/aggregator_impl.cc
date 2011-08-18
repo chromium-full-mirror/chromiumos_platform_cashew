@@ -131,10 +131,11 @@ void AggregatorImpl::OnByteCounterUpdate(const Service *service,
   }
 }
 
-void AggregatorImpl::GetBytesPerDay(
-                        std::map<std::string, int64_t>& day_usage) {  // NOLINT
-    // TODO(mikemeko): fill this function to return whatever structure
-    // contains our bytes per day info.
+std::map<std::string, int64_t> AggregatorImpl::GetBytesPerDay() {
+  std::map<std::string, int64_t> bytes_per_day;
+  // TODO(mikemeko): fill this function to return whatever structure
+  // contains our bytes per day info.
+  return bytes_per_day;
 }
 
 // private
