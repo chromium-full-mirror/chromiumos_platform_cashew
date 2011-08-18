@@ -70,7 +70,7 @@ void CashewServer::RequestDataPlansUpdate(const std::string& service_path,
 }
 
 void CashewServer::RequestCellularUsageInfo(
-                           const std::map<std::string, int64_t>& day_usage,
+                           std::map<std::string, int64_t>& day_usage,
                            DBus::Error& error) {  // NOLINT
   LOG(INFO) << "RequestCellularUsageInfo called";
   aggregator_->GetBytesPerDay(day_usage);

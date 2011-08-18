@@ -48,7 +48,7 @@ class CashewServer : public org::chromium::Cashew_adaptor,
 
     // Called from Chrome when user wants usage information
     virtual void RequestCellularUsageInfo(
-                        const std::map<std::string, int64_t>& day_usage,
+                        std::map<std::string, int64_t>& day_usage,
                         DBus::Error& error);  // NOLINT
 
     // Test method to verify that Cashew service is working

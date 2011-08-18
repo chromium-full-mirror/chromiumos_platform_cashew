@@ -122,7 +122,7 @@
       <tp:docstring>
         Request cellular usage statistics
       </tp:docstring>
-      <arg name="usage" type="a{sx}" direction="in">
+      <arg name="usage" type="a{sx}" direction="out">
         <tp:docstring>
           Structure that maps dates to usage (in bytes)
         </tp:docstring>

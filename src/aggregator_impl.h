@@ -46,7 +46,7 @@ class AggregatorImpl : public Aggregator {
 
     // returns a map of date strings to bytes used
     virtual void GetBytesPerDay(
-                      const std::map<std::string, int64_t>& day_usage);
+                         std::map<std::string, int64_t>& day_usage);  // NOLINT
 
   private:
 

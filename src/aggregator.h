@@ -5,10 +5,10 @@
 #ifndef SRC_AGGREGATOR_H_
 #define SRC_AGGREGATOR_H_
 
-#include <base/basictypes.h>
-
 #include <map>
 #include <string>
+
+#include <base/basictypes.h>  // NOLINT
 
 namespace cashew {
 
@@ -25,8 +25,10 @@ class Aggregator {
     virtual void OnByteCounterUpdate(const Service *service,
         uint64 delta_rx_bytes, uint64 delta_tx_bytes) = 0;
 
+    // takes a map of strings to int64s and sets it to the dates for the past
+    // year and their corresponding byte count.
     virtual void GetBytesPerDay(
-                       const std::map<std::string, int64_t>& day_usage)= 0;
+                       std::map<std::string, int64_t>& day_usage)= 0;  //NOLINT
 
     // factory
     static Aggregator* NewAggregator();
