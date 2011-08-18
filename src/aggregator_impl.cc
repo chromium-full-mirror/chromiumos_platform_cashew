@@ -254,7 +254,9 @@ void AggregatorImpl::TrimOldData(BytesPerDay *bytes_per_day, Date baseline) {
 bool AggregatorImpl::GetCurrentData() {
   // check if the file exists
   if (!file_util::PathExists(kFilePath)) {
-    return false;
+    // no data has been recorded by aggregator yet
+    // we will create the file on write
+    return true;
   }
 
   // read the file
