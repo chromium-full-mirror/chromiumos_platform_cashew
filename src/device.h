@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -61,14 +61,16 @@ class Device {
     // parent service will no longer receive updates after this call
     virtual void StopByteCounter() = 0;
 
+    // calls ReadStats on byte counter
+    virtual bool ReadStats() = 0;
+
+    // get the current byte counter stats
+    // byte counter should be running
+    virtual bool GetByteCounterStats(uint64 *rx_bytes,
+                                     uint64 *tx_bytes) const = 0;
+
     // is the byte counter running?
     virtual bool ByteCounterRunning() const = 0;
-
-    // reset byte counter to an arbitrary baseline value
-    // counter will continue to run and increment relative to new baseline
-    // there must be an existing byte counter
-    // parent service must already have received at least one update
-    virtual void ResetByteCounter(uint64 rx_bytes, uint64 tx_bytes) = 0;
 
     // factory
     static Device* NewDevice(Service * const parent,

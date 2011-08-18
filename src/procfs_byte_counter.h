@@ -26,9 +26,8 @@ class ProcfsByteCounter: public ByteCounter {
     virtual ~ProcfsByteCounter();
     virtual const std::string& GetInterface() const;
     virtual uint64 GetRxBytes() const;
-    virtual void SetRxBytes(uint64 rx_bytes);
     virtual uint64 GetTxBytes() const;
-    virtual void SetTxBytes(uint64 tx_bytes);
+    virtual bool ReadStats();
     virtual void SetDelegate(ByteCounterDelegate *delegate);
 
   private:
@@ -88,6 +87,9 @@ class ProcfsByteCounter: public ByteCounter {
     // this becomes true after the first call to OnStatsUpdate
     bool baseline_initialized_;
 
+    // have there been any counter changes since the last delegate update?
+    bool counter_changed_since_last_update_;
+
     // delegate
     ByteCounterDelegate *delegate_;
 
@@ -101,13 +103,20 @@ class ProcfsByteCounter: public ByteCounter {
     // ok to call even if file isn't open
     void CloseProcNetDev();
 
-    // glib integration: static wrapper for ReadStats
-    // takes object ptr as data and invokes object->ReadStats
-    static gboolean StaticReadStatsCallback(gpointer data);
+    // glib integration: static wrapper for UpdateDelegateWithStats
+    // takes object ptr as data and invokes object->UpdateDelegateWithStats
+    static gboolean StaticUpdateDelegateWithStatsCallback(gpointer data);
+
+    // first invokes DoReadStats and then, on success, invokes UpdateDelegate
+    // returns true on success and false on failure
+    bool UpdateDelegateWithStats();
+
+    // update delegate if counters have changed since last update
+    void UpdateDelegate();
 
     // read stats for |interface_| from /proc/net/dev
     // returns true on success and false on failure
-    bool ReadStats();
+    bool DoReadStats();
 
     // new stats are available, update counter
     void OnStatsUpdate(const struct netdev_stats& stats);

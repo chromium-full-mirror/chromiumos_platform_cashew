@@ -1,4 +1,4 @@
-// Copyright (c) 2010, 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,8 +21,10 @@ class DeviceMock : public Device {
     MOCK_CONST_METHOD0(GetInterface, const std::string&());
     MOCK_METHOD0(StartByteCounter, bool());
     MOCK_METHOD0(StopByteCounter, void());
+    MOCK_METHOD0(ReadStats, bool());
+    MOCK_CONST_METHOD2(GetByteCounterStats, bool(uint64 *rx_bytes,
+                                                 uint64 *tx_bytes));
     MOCK_CONST_METHOD0(ByteCounterRunning, bool());
-    MOCK_METHOD2(ResetByteCounter, void(uint64 rx_bytes, uint64 tx_bytes));
 };
 
 }  // namespace cashew

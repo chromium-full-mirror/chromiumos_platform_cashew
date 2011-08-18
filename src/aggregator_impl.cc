@@ -291,6 +291,9 @@ bool AggregatorImpl::GetCurrentData() {
 
 bool AggregatorImpl::UpdateFile() {
   CHECK(initialized_);
+
+  LOG(INFO) << "UpdateFile: accumulated_count_ = " << accumulated_count_;
+
   if (accumulated_count_ == 0) {
     // nothing to do
     return true;
@@ -303,7 +306,9 @@ bool AggregatorImpl::UpdateFile() {
   std::string to_write = StringFromMap(bytes_per_day_);
 
   // write to file
-  if (!file_util::WriteFile(kFilePath, to_write.c_str(), to_write.size())) {
+  int to_write_size = to_write.size();
+  if (file_util::WriteFile(kFilePath, to_write.c_str(), to_write_size) !=
+      to_write_size) {
     LOG(WARNING) << "UpdateFile: failed to write to file";
     return false;
   }

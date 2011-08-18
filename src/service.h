@@ -94,10 +94,10 @@ class Service {
     //     byte counter has been stopped
     virtual void OnByteCounterStopped() = 0;
 
-    // we've received a notification from our child Device that the
-    //     byte counter has been reset
-    virtual void OnByteCounterReset(uint64 new_rx_bytes,
-                                    uint64 new_tx_bytes) = 0;
+    // DataPlan methods
+
+    // we've received a notification that a data plan for this service expired
+    virtual bool OnDataPlanExpired(DataPlan *data_plan) = 0;
 
     // Service Manager methods
 

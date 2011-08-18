@@ -26,24 +26,27 @@ static const char *kProcNetDevLineFormat =
     "%s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu\n";
 static const int kProcNetDevLineFormatNumElements = 17;
 
-// ReadStats timer interval
+// UpdateDelegateWithStats timer interval
 // TODO(vlaviano): can reduce this once we implement a smarter ShouldEmitSignal
 // policy than 'return true'
-static const guint kReadStatsIntervalSeconds = 60;
+static const guint kUpdateDelegateIntervalSeconds = 60;
 
 ProcfsByteCounter::ProcfsByteCounter(const std::string& interface)
     : interface_(interface), proc_net_dev_fp_(NULL), read_stats_source_id_(0),
       counter_rx_bytes_(0), counter_tx_bytes_(0), baseline_stats_(),
-      baseline_initialized_(false), delegate_(NULL) {
+      baseline_initialized_(false), counter_changed_since_last_update_(false),
+      delegate_(NULL) {
   DCHECK(!interface_.empty());
   // initialize our counter state
-  if (!ReadStats()) {
-    LOG(WARNING) << interface_ << ": ctor: ReadStats failed";
+  if (!DoReadStats()) {
+    LOG(WARNING) << interface_ << ": ctor: DoReadStats failed";
     // fall through so that we'll try again later
   }
-  // schedule periodic ReadStats() calls to update counter state in the future
-  read_stats_source_id_ = g_timeout_add_seconds(kReadStatsIntervalSeconds,
-                                                StaticReadStatsCallback, this);
+  // schedule periodic UpdateDelegateWithStats calls to
+  //     update counter state in the future
+  read_stats_source_id_ = g_timeout_add_seconds(
+      kUpdateDelegateIntervalSeconds,
+      StaticUpdateDelegateWithStatsCallback, this);
   if (read_stats_source_id_ == 0) {
     LOG(ERROR) << interface_ << ": ctor: g_idle_add failed";
     return;
@@ -55,8 +58,10 @@ ProcfsByteCounter::~ProcfsByteCounter() {
   if (read_stats_source_id_ != 0 && !g_source_remove(read_stats_source_id_)) {
     LOG(WARNING) << interface_ << ": dtor: g_source_remove_failed";
   }
-  // notify delegate that byte counter has been stopped
-  delegate_->OnByteCounterStopped(this);
+  // read and update delegate with most recent stats
+  if (!UpdateDelegateWithStats()) {
+    LOG(WARNING) << interface_ << ": dtor: UpdateDelegateWithStats failed";
+  }
 }
 
 const std::string& ProcfsByteCounter::GetInterface() const {
@@ -67,22 +72,12 @@ uint64 ProcfsByteCounter::GetRxBytes() const {
   return counter_rx_bytes_;
 }
 
-void ProcfsByteCounter::SetRxBytes(uint64 rx_bytes) {
-  LOG(INFO) << interface_ << ": SetRxBytes: rx_bytes = " << rx_bytes;
-  counter_rx_bytes_ = rx_bytes;
-  // notify delegate that byte counter has been reset
-  delegate_->OnByteCounterReset(this, rx_bytes, counter_tx_bytes_);
-}
-
 uint64 ProcfsByteCounter::GetTxBytes() const {
   return counter_tx_bytes_;
 }
 
-void ProcfsByteCounter::SetTxBytes(uint64 tx_bytes) {
-  LOG(INFO) << interface_ << ": SetTxBytes: tx_bytes = " << tx_bytes;
-  counter_tx_bytes_ = tx_bytes;
-  // notify delegate that byte counter has been reset
-  delegate_->OnByteCounterReset(this, counter_rx_bytes_, tx_bytes);
+bool ProcfsByteCounter::ReadStats() {
+  return DoReadStats();
 }
 
 void ProcfsByteCounter::SetDelegate(ByteCounterDelegate *delegate) {
@@ -113,21 +108,50 @@ void ProcfsByteCounter::CloseProcNetDev() {
 }
 
 // static
-gboolean ProcfsByteCounter::StaticReadStatsCallback(gpointer data) {
+gboolean ProcfsByteCounter::StaticUpdateDelegateWithStatsCallback(
+    gpointer data) {
   ProcfsByteCounter *counter = reinterpret_cast<ProcfsByteCounter*>(data);
   CHECK_NOTNULL(counter);
-  if (!counter->ReadStats()) {
-    LOG(WARNING) << counter->GetInterface() << ": StaticReadStatsCallback: "
-        << "ReadStats failed";
+  if (!counter->UpdateDelegateWithStats()) {
+    LOG(WARNING) << counter->GetInterface()
+        << ": StaticUpdateDelegateWithStatsCallback"
+        << ": UpdateDelegateWithStats failed";
   }
   return TRUE;  // we want to be called again later
 }
 
-bool ProcfsByteCounter::ReadStats() {
+bool ProcfsByteCounter::UpdateDelegateWithStats() {
+  // read stats
+  if (!DoReadStats()) {
+    LOG(WARNING) << interface_
+        << ": UpdateDelegateWithStats: DoReadStats failed";
+    return false;
+  }
+  // update the delegate with changes
+  UpdateDelegate();
+  return true;
+}
+
+void ProcfsByteCounter::UpdateDelegate() {
+  if (delegate_ != NULL && counter_changed_since_last_update_) {
+    // reset counter changed flag since we are about to update the delegate
+    counter_changed_since_last_update_ = false;
+
+    // update delegate
+    delegate_->OnByteCounterUpdate(this, counter_rx_bytes_,
+                                   counter_tx_bytes_);
+
+    // NOTE: OnByteCounterUpdate can cause this counter to be deleted, so
+    // we're limited in what we can do beyond this point. See this FAQ:
+    // http://www.parashift.com/c++-faq-lite/freestore-mgmt.html#faq-16.15
+  }
+}
+
+bool ProcfsByteCounter::DoReadStats() {
   // we open and close the virtual file each time through, because we get stale
   // data if we keep the file open and rewind/read repeatedly
   if (!OpenProcNetDev()) {
-    LOG(ERROR) << interface_ << ": ReadStats: OpenProcDevNet failed";
+    LOG(ERROR) << interface_ << ": DoReadStats: OpenProcDevNet failed";
     return false;
   }
   char line_buffer[kLineBufferSize];
@@ -140,7 +164,7 @@ bool ProcfsByteCounter::ReadStats() {
     if (line_number == 1 || line_number == 2) {
       if (strncmp(line_buffer, (line_number == 1) ? kProcNetDevExpectedLine1 :
                   kProcNetDevExpectedLine2, sizeof(line_buffer))) {
-        LOG(ERROR) << interface_ << ": ReadStats: line " << line_number
+        LOG(ERROR) << interface_ << ": DoReadStats: line " << line_number
             << " is not as we expect";
         CloseProcNetDev();
         return false;
@@ -156,7 +180,7 @@ bool ProcfsByteCounter::ReadStats() {
     // device name.
     char *colon_ptr = strchr(line_buffer, ':');
     if (colon_ptr == NULL) {
-      LOG(ERROR) << interface_ << ": ReadStats: line " << line_number
+      LOG(ERROR) << interface_ << ": DoReadStats: line " << line_number
           << ": strchr failed to find colon";
       CloseProcNetDev();
       return false;
@@ -181,13 +205,13 @@ bool ProcfsByteCounter::ReadStats() {
                         &stats.tx_fifo_errors, &stats.collisions,
                         &stats.tx_carrier_errors, &stats.tx_compressed);
     if (result == EOF && ferror(proc_net_dev_fp_)) {
-      PLOG(ERROR) << interface_ << ": ReadStats: line " << line_number
+      PLOG(ERROR) << interface_ << ": DoReadStats: line " << line_number
           << ": sscanf failed";
       CloseProcNetDev();
       return false;
     }
     if (result != kProcNetDevLineFormatNumElements) {
-      LOG(ERROR) << interface_ << ": ReadStats: line " << line_number
+      LOG(ERROR) << interface_ << ": DoReadStats: line " << line_number
           << ": sscanf matched " << ((result == EOF) ? 0 : result)
           << " elements (" << kProcNetDevLineFormatNumElements << " expected)";
       CloseProcNetDev();
@@ -202,7 +226,7 @@ bool ProcfsByteCounter::ReadStats() {
     OnStatsUpdate(stats);
     return true;
   }
-  LOG(ERROR) << interface_ << ": ReadStats: no matching device";
+  LOG(ERROR) << interface_ << ": DoReadStats: no matching device";
   CloseProcNetDev();
   return false;
 }
@@ -225,14 +249,11 @@ void ProcfsByteCounter::OnStatsUpdate(const struct netdev_stats& stats) {
     baseline_stats_ = stats;
     LOG(INFO) << interface_ << ": OnStatsUpdate: new counter: rx_bytes = "
         << counter_rx_bytes_ << ", tx_bytes = " << counter_tx_bytes_;
-    bool counter_changed = counter_rx_bytes_ != old_counter_rx_bytes ||
-        counter_tx_bytes_ != old_counter_tx_bytes;
-    if (delegate_ != NULL && counter_changed) {
-      delegate_->OnByteCounterUpdate(this, counter_rx_bytes_,
-                                     counter_tx_bytes_);
-      // NOTE: OnByteCounterUpdate can cause this counter to be deleted, so
-      // we're limited in what we can do beyond this point. See this FAQ:
-      // http://www.parashift.com/c++-faq-lite/freestore-mgmt.html#faq-16.15
+    // check if we have changed counters since last update
+    if (!counter_changed_since_last_update_) {
+      counter_changed_since_last_update_ =
+          counter_rx_bytes_ != old_counter_rx_bytes ||
+          counter_tx_bytes_ != old_counter_tx_bytes;
     }
   } else {
     // We initialize the baseline here and update it on on each new sample so

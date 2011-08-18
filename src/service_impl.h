@@ -75,9 +75,10 @@ class ServiceImpl : public Service,
     //     byte counter has been stopped
     virtual void OnByteCounterStopped();
 
-    // we've received a notification from our child Device that the
-    //     byte counter has been reset
-    virtual void OnByteCounterReset(uint64 new_rx_bytes, uint64 new_tx_bytes);
+    // DataPlan methods
+
+    // we've received a notification that a data plan for this service expired
+    virtual bool OnDataPlanExpired(DataPlan *data_plan);
 
     // DataPlanProviderDelegate methods
 

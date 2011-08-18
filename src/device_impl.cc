@@ -136,21 +136,33 @@ void DeviceImpl::StopByteCounter() {
   if (byte_counter_running_) {
     DeleteByteCounter();
     byte_counter_running_ = false;
+    // notify |parent_|
+    parent_->OnByteCounterStopped();
   }
   DCHECK(byte_counter_ == NULL);
 }
 
-bool DeviceImpl::ByteCounterRunning() const {
-  return byte_counter_running_;
+bool DeviceImpl::ReadStats() {
+  return byte_counter_->ReadStats();
 }
 
-void DeviceImpl::ResetByteCounter(uint64 rx_bytes, uint64 tx_bytes) {
-  LOG(INFO) << path_ << ": ResetByteCounter: rx_bytes = " << rx_bytes
-      << ", tx_bytes = " << tx_bytes;
-  DCHECK(byte_counter_running_);
-  DCHECK(byte_counter_ != NULL);
-  byte_counter_->SetRxBytes(rx_bytes);
-  byte_counter_->SetTxBytes(tx_bytes);
+bool DeviceImpl::GetByteCounterStats(uint64 *rx_bytes, uint64 *tx_bytes) const {
+  CHECK(rx_bytes != NULL);
+  CHECK(tx_bytes != NULL);
+
+  if (!byte_counter_running_) {
+    LOG(WARNING) << "GetByteCounterStats: byte counter is not running";
+    return false;
+  }
+
+  *rx_bytes = byte_counter_->GetRxBytes();
+  *tx_bytes = byte_counter_->GetTxBytes();
+
+  return true;
+}
+
+bool DeviceImpl::ByteCounterRunning() const {
+  return byte_counter_running_;
 }
 
 // ByteCounterDelegate methods
@@ -163,23 +175,6 @@ void DeviceImpl::OnByteCounterUpdate(const ByteCounter *counter,
   LOG(INFO) << path_ << ": OnByteCounterUpdate: rx_bytes = " << rx_bytes
       << ", tx_bytes = " << tx_bytes;
   parent_->OnByteCounterUpdate(rx_bytes, tx_bytes);
-}
-
-void DeviceImpl::OnByteCounterStopped(const ByteCounter *counter) {
-  DCHECK(byte_counter_ != NULL);
-  DCHECK(counter == byte_counter_);
-  LOG(INFO) << path_ << ": OnByteCounterStopped: byte counter stopped";
-  parent_->OnByteCounterStopped();
-}
-
-void DeviceImpl::OnByteCounterReset(const ByteCounter *counter,
-    uint64 new_rx_bytes, uint64 new_tx_bytes) {
-  DCHECK(byte_counter_running_);
-  DCHECK(byte_counter_ != NULL);
-  DCHECK(counter == byte_counter_);
-  LOG(INFO) << path_ << ": OnByteCounterReset: byte counter reset: "
-    "new_rx_bytes: " << new_rx_bytes << ", new_tx_bytes: " << new_tx_bytes;
-  parent_->OnByteCounterReset(new_rx_bytes, new_tx_bytes);
 }
 
 // Private methods

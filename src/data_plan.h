@@ -7,6 +7,8 @@
 #ifndef SRC_DATA_PLAN_H_
 #define SRC_DATA_PLAN_H_
 
+#include <glib.h>
+
 #include <map>
 #include <string>
 #include <vector>
@@ -87,6 +89,9 @@ class DataPlan {
     // get total used bytes
     virtual ByteCount GetTotalBytesUsed() const;
 
+    // set the service for this data plan
+    virtual void SetService(Service *service);
+
     // is this an active plan?
     // we define active to mean that the plan is current and not exhausted
     virtual bool IsActive() const;
@@ -109,18 +114,26 @@ class DataPlan {
     // returns NULL if list is empty or contains no active plans
     static DataPlan* GetActivePlan(const DataPlanList& data_plans);
 
+    // assign as much of |bytes_to_assign| as we can to |data_plan|
+    // returns the number of bytes assigned to |data_plan|
+    static ByteCount AssignBytesToPlan(DataPlan *data_plan,
+                                       ByteCount bytes_to_assign);
+
     // event handler for |service's| local byte counter on |device|
-    // updates active plans in |data_plans| based on the |rx_bytes| and
-    //   |tx_bytes| values gathered during the most recent sample interval
+    // updates active plans in |data_plans| based on the |delta_rx_bytes| and
+    //   |delta_tx_bytes| values gathered during the most recent sample interval
     // notifies |service_manager| if an active plan is completely consumed
     // returns true if any plans were updated and false otherwise
     // |data_plans|, |service|, |service_manager| and |device| must not be NULL
     static bool OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
                                     ServiceManager *service_manager,
-                                    Device *device, uint64 rx_bytes,
-                                    uint64 tx_bytes);
+                                    Device *device, uint64 delta_rx_bytes,
+                                    uint64 delta_tx_bytes);
 
   private:
+    // service for this data plan
+    Service *service_;
+
     // human-readable plan name
     const std::string name_;
 
@@ -153,6 +166,30 @@ class DataPlan {
     // carrier baseline (|data_bytes_used_|) +
     // locally measured traffic (|local_bytes_used_|)
     ByteCount total_bytes_used_;
+
+    // a timer that goes off when this data plan expires
+    // TODO(mikemeko): we need to do more testing for timer
+    GSource *expiration_timeout_source_;
+
+    // is this plan current?
+    bool IsCurrent() const;
+
+    // does this plan have bytes remaining?
+    bool HasBytesRemaining() const;
+
+    // this data plan just expired
+    void OnDataPlanExpired();
+
+    // static wrapper for OnDataPlanExpired
+    // takes object ptr as data and invokes object->OnDataPlanExpired
+    static gboolean StaticOnDataPlanExpired(gpointer data);
+
+    // creates and starts a timer that will fire when this data plan expires
+    // returns true on success and false on failure
+    bool CreateExpirationTimer();
+
+    // stops and destroys the expiration timer if it exists
+    void DestroyExpirationTimer();
 
     // convert plan type enum value to string formatted for libcros
     const char* TypeToLibcrosString(Type type) const;

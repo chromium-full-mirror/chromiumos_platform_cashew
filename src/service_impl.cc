@@ -7,6 +7,7 @@
 #include <glog/logging.h>
 
 #include "src/aggregator.h"
+#include "src/data_plan.h"
 #include "src/data_plan_provider.h"
 #include "src/device.h"
 #include "src/policy.h"
@@ -269,9 +270,11 @@ void ServiceImpl::OnByteCounterUpdate(uint64 rx_bytes, uint64 tx_bytes) {
     tx_bytes = kuint64max;
   }
 
-  // pass along byte counter info to |aggregator_|
+  // compute deltas
   uint64 delta_rx_bytes = rx_bytes - prev_rx_bytes_;
   uint64 delta_tx_bytes = tx_bytes - prev_tx_bytes_;
+
+  // pass along byte counter info to |aggregator_|
   aggregator_->OnByteCounterUpdate(this, delta_rx_bytes, delta_tx_bytes);
 
   // update prev counts
@@ -281,7 +284,7 @@ void ServiceImpl::OnByteCounterUpdate(uint64 rx_bytes, uint64 tx_bytes) {
   // dispatch this notification to our data plans list and consider sending
   // out a signal if any plans were updated
   if (DataPlan::OnByteCounterUpdate(&data_plans_, this, parent_, device_,
-                                    rx_bytes, tx_bytes)) {
+                                    delta_rx_bytes, delta_tx_bytes)) {
     MaybeEmitDataPlansUpdate();
   }
 }
@@ -292,10 +295,60 @@ void ServiceImpl::OnByteCounterStopped() {
   prev_tx_bytes_ = 0;
 }
 
-void ServiceImpl::OnByteCounterReset(uint64 new_rx_bytes, uint64 new_tx_bytes) {
-  // reset previous byte counter info trackers
-  prev_rx_bytes_ = new_rx_bytes;
-  prev_tx_bytes_ = new_tx_bytes;
+// DataPlan methods
+
+bool ServiceImpl::OnDataPlanExpired(DataPlan *data_plan) {
+  CHECK(data_plan != NULL);
+  CHECK(device_ != NULL);
+
+  // update byte counter stats
+  if (!device_->ReadStats()) {
+    LOG(WARNING) << "OnDataPlanExpired: failed to read byte counter stats";
+    return false;
+  }
+
+  // request byte counter stats
+  uint64 rx_bytes;
+  uint64 tx_bytes;
+  if (!device_->GetByteCounterStats(&rx_bytes, &tx_bytes)) {
+    LOG(WARNING) << "OnDataPlanExpired: failed to retrieve byte counter stats";
+    return false;
+  }
+
+  // compute deltas
+  uint64 delta_rx_bytes = rx_bytes - prev_rx_bytes_;
+  uint64 delta_tx_bytes = tx_bytes - prev_tx_bytes_;
+
+  ByteCount used_bytes_to_assign = delta_rx_bytes + delta_tx_bytes;
+  // try to detect overflow
+  if (static_cast<uint64>(used_bytes_to_assign) < delta_rx_bytes ||
+      static_cast<uint64>(used_bytes_to_assign) < delta_tx_bytes ||
+      used_bytes_to_assign < 0) {
+    LOG(WARNING) << "OnDataPlanExpired: overflow detected:"
+        " |used_bytes_to_assign|";
+    return false;
+  }
+
+  // pass along usage info to |aggregator_|
+  aggregator_->OnByteCounterUpdate(this, delta_rx_bytes, delta_tx_bytes);
+
+  // update prev counts
+  prev_rx_bytes_ = rx_bytes;
+  prev_tx_bytes_ = tx_bytes;
+
+  // assign as much as we can to the expiring |data_plan|
+  ByteCount assigned_bytes = DataPlan::AssignBytesToPlan(data_plan,
+                                                         used_bytes_to_assign);
+  CHECK_LE(assigned_bytes, used_bytes_to_assign);
+
+  // if we still have bytes left, assign them to other active data plans
+  used_bytes_to_assign -= assigned_bytes;
+  if (used_bytes_to_assign > 0) {
+    DataPlan::OnByteCounterUpdate(&data_plans_, this, parent_, device_,
+                                  used_bytes_to_assign, 0);
+  }
+
+  return true;
 }
 
 // DataPlanProviderDelegate methods
@@ -395,6 +448,8 @@ void ServiceImpl::OnRequestComplete(const DataPlanProvider *provider,
           << ": OnRequestComplete: could not convert plan[" << i << "]";
       continue;
     }
+    // set the service for |plan|
+    plan->SetService(this);
     LOG(INFO) << path_ << ": OnRequestComplete: converted plan[" << i << "]";
     new_plans.push_back(plan);
   }

@@ -53,21 +53,15 @@ class DeviceImpl : public Device,
     // Service methods
     virtual bool StartByteCounter();
     virtual void StopByteCounter();
+    virtual bool ReadStats();
+    virtual bool GetByteCounterStats(uint64 *rx_bytes, uint64 *tx_bytes) const;
     virtual bool ByteCounterRunning() const;
-    virtual void ResetByteCounter(uint64 rx_bytes, uint64 tx_bytes);
 
     // ByteCounterDelegate methods
 
     // called when |counter| is updated
     virtual void OnByteCounterUpdate(const ByteCounter *counter,
                                      uint64 rx_bytes, uint64 tx_bytes);
-
-    // called when |counter| is stopped
-    virtual void OnByteCounterStopped(const ByteCounter *counter);
-
-    // called when |counter| is reset
-    virtual void OnByteCounterReset(const ByteCounter *counter,
-        uint64 new_rx_bytes, uint64 new_tx_bytes);
 
   private:
     // back pointer to our parent Service

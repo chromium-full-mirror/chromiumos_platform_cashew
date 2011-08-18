@@ -483,6 +483,152 @@ TEST_F(DataPlanTest, IsActiveUnlimitedPlan) {
   EXPECT_TRUE(current_unlimited_plan_->IsActive());
 }
 
+// tests for assigning bytes to a data plan
+
+TEST_F(DataPlanTest, AssignBytesToInactiveConsumed) {
+  // create consumed plan
+  std::string name = "Consumed Plan";
+  DataPlan::Type type = DataPlan::kTypeMeteredFree;
+  base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+  base::Time now = base::Time::Now();
+  base::Time start_time = now - twelve_hours;
+  base::Time end_time = now + twelve_hours;
+  ByteCount max_bytes = 100 * kBytesPerMegabyte;
+  ByteCount used_bytes = 100 * kBytesPerMegabyte;
+  DataPlan *consumed_plan = new(std::nothrow) DataPlan(name, type, now,
+                                                       start_time, end_time,
+                                                       max_bytes, used_bytes);
+  ASSERT_TRUE(consumed_plan != NULL);
+  EXPECT_FALSE(consumed_plan->IsActive());
+
+  ByteCount bytes_to_assign = 1 * kBytesPerMegabyte;
+
+  // simulate assigning bytes to the consumed plan
+  ByteCount bytes_assigned = DataPlan::AssignBytesToPlan(
+      consumed_plan, bytes_to_assign);
+
+  // check if test passed
+  EXPECT_EQ(0, bytes_assigned);
+  EXPECT_EQ(consumed_plan->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(consumed_plan->GetDataBytesUsed(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(consumed_plan->GetLocalBytesUsed(), 0);
+  EXPECT_EQ(consumed_plan->GetTotalBytesUsed(), 100 * kBytesPerMegabyte);
+
+  // clean up
+  delete consumed_plan;
+}
+
+TEST_F(DataPlanTest, AssignBytesToInactiveExpired) {
+  // create expired plan
+  std::string name = "Expired Plan";
+  DataPlan::Type type = DataPlan::kTypeMeteredFree;
+  base::TimeDelta twelve_hours = base::TimeDelta::FromHours(12);
+  base::Time now = base::Time::Now();
+  base::Time start_time = now - 2 * twelve_hours;
+  base::Time end_time = now - twelve_hours;
+  ByteCount max_bytes = 100 * kBytesPerMegabyte;
+  ByteCount used_bytes = 0;
+  DataPlan *expired_plan = new(std::nothrow) DataPlan(name, type, now,
+                                                      start_time, end_time,
+                                                      max_bytes, used_bytes);
+  ASSERT_TRUE(expired_plan != NULL);
+  EXPECT_FALSE(expired_plan->IsActive());
+
+  ByteCount bytes_to_assign = 1 * kBytesPerMegabyte;
+
+  // simulate assigning bytes to the expired plan
+  ByteCount bytes_assigned = DataPlan::AssignBytesToPlan(
+      expired_plan, bytes_to_assign);
+
+  // check if test passed
+  EXPECT_EQ(0, bytes_assigned);
+  EXPECT_EQ(expired_plan->GetDataBytesMax(), 100 * kBytesPerMegabyte);
+  EXPECT_EQ(expired_plan->GetDataBytesUsed(), 0);
+  EXPECT_EQ(expired_plan->GetLocalBytesUsed(), 0);
+  EXPECT_EQ(expired_plan->GetTotalBytesUsed(), 0);
+
+  // clean up
+  delete expired_plan;
+}
+
+TEST_F(DataPlanTest, AssignBytesToUnlimited) {
+  ByteCount bytes_to_assign = 200 * kBytesPerMegabyte;
+
+  // simulate assigning bytes to a plan
+  ByteCount bytes_assigned = DataPlan::AssignBytesToPlan(
+      current_unlimited_plan_, bytes_to_assign);
+
+  // check if test passed
+  EXPECT_EQ(bytes_to_assign, bytes_assigned);
+  EXPECT_EQ(current_unlimited_plan_->GetDataBytesMax(), 0);
+  EXPECT_EQ(current_unlimited_plan_->GetDataBytesUsed(), 5 * kBytesPerMegabyte);
+  EXPECT_EQ(current_unlimited_plan_->GetLocalBytesUsed(),
+            200 * kBytesPerMegabyte);
+  EXPECT_EQ(current_unlimited_plan_->GetTotalBytesUsed(),
+            205 * kBytesPerMegabyte);
+  EXPECT_TRUE(current_unlimited_plan_->IsActive());
+}
+
+TEST_F(DataPlanTest, AssignBytesToMeteredNotConsumed) {
+  ByteCount bytes_to_assign = 45 * kBytesPerMegabyte;
+
+  // simulate assigning bytes to a plan
+  ByteCount bytes_assigned = DataPlan::AssignBytesToPlan(
+      current_available_metered_plan_, bytes_to_assign);
+
+  // check if test passed
+  EXPECT_EQ(bytes_to_assign, bytes_assigned);
+  EXPECT_EQ(current_available_metered_plan_->GetDataBytesMax(),
+            100 * kBytesPerMegabyte);
+  EXPECT_EQ(current_available_metered_plan_->GetDataBytesUsed(),
+            5 * kBytesPerMegabyte);
+  EXPECT_EQ(current_available_metered_plan_->GetLocalBytesUsed(),
+            45 * kBytesPerMegabyte);
+  EXPECT_EQ(current_available_metered_plan_->GetTotalBytesUsed(),
+            50 * kBytesPerMegabyte);
+  EXPECT_TRUE(current_available_metered_plan_->IsActive());
+}
+
+TEST_F(DataPlanTest, AssignBytesToMeteredConsumed) {
+  ByteCount bytes_to_assign = 95 * kBytesPerMegabyte;
+
+  // simulate assigning bytes to a plan
+  ByteCount bytes_assigned = DataPlan::AssignBytesToPlan(
+      current_available_metered_plan_, bytes_to_assign);
+
+  // check if test passed
+  EXPECT_EQ(bytes_to_assign, bytes_assigned);
+  EXPECT_EQ(current_available_metered_plan_->GetDataBytesMax(),
+            100 * kBytesPerMegabyte);
+  EXPECT_EQ(current_available_metered_plan_->GetDataBytesUsed(),
+            5 * kBytesPerMegabyte);
+  EXPECT_EQ(current_available_metered_plan_->GetLocalBytesUsed(),
+            95 * kBytesPerMegabyte);
+  EXPECT_EQ(current_available_metered_plan_->GetTotalBytesUsed(),
+            100 * kBytesPerMegabyte);
+  EXPECT_FALSE(current_available_metered_plan_->IsActive());
+}
+
+TEST_F(DataPlanTest, AssignBytesToMeteredWithOverage) {
+  ByteCount bytes_to_assign = 200 * kBytesPerMegabyte;
+
+  // simulate assigning bytes to a plan
+  ByteCount bytes_assigned = DataPlan::AssignBytesToPlan(
+      current_available_metered_plan_, bytes_to_assign);
+
+  // check if test passed
+  EXPECT_EQ(95 * kBytesPerMegabyte, bytes_assigned);
+  EXPECT_EQ(current_available_metered_plan_->GetDataBytesMax(),
+            100 * kBytesPerMegabyte);
+  EXPECT_EQ(current_available_metered_plan_->GetDataBytesUsed(),
+            5 * kBytesPerMegabyte);
+  EXPECT_EQ(current_available_metered_plan_->GetLocalBytesUsed(),
+            95 * kBytesPerMegabyte);
+  EXPECT_EQ(current_available_metered_plan_->GetTotalBytesUsed(),
+            100 * kBytesPerMegabyte);
+  EXPECT_FALSE(current_available_metered_plan_->IsActive());
+}
+
 // tests for local byte counter maintenance across plan transitions
 
 // empty list, we should stop the counter
@@ -551,7 +697,6 @@ TEST_F(DataPlanTest, OnePlanConsumed) {
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_one_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(0, 0)).Times(1);
     EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
   }
 
@@ -585,8 +730,6 @@ TEST_F(DataPlanTest, OnePlanConsumedWithOverage) {
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_one_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(10 * kBytesPerMegabyte,
-                                               0)).Times(1);
     EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
   }
 
@@ -761,8 +904,6 @@ TEST_F(DataPlanTest, TwoPlansSecondUnlimited) {
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_one_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(50 * kBytesPerMegabyte,
-                                               0)).Times(1);
   }
 
   // simulate a byte counter update
@@ -835,8 +976,6 @@ TEST_F(DataPlanTest, TwoPlansSecondNotConsumed) {
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_one_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(50 * kBytesPerMegabyte,
-                                               0)).Times(1);
   }
 
   // simulate a byte counter update
@@ -875,12 +1014,9 @@ TEST_F(DataPlanTest, TwoPlansSecondConsumed) {
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_one_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(100 * kBytesPerMegabyte,
-                                               0)).Times(1);
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_two_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(0, 0)).Times(1);
     EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
   }
 
@@ -920,13 +1056,9 @@ TEST_F(DataPlanTest, TwoPlansSecondConsumedWithOverage) {
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_one_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(110 * kBytesPerMegabyte,
-                                               0)).Times(1);
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_two_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(10 * kBytesPerMegabyte,
-                                               0)).Times(1);
     EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
   }
 
@@ -1005,8 +1137,6 @@ TEST_F(DataPlanTest, ThreePlansSecondNotConsumed) {
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_one_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(50 * kBytesPerMegabyte,
-                                               0)).Times(1);
   }
 
   // simulate a byte counter update
@@ -1051,13 +1181,9 @@ TEST_F(DataPlanTest, ThreePlansThirdNotConsumed) {
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_one_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(150 * kBytesPerMegabyte,
-                                               0)).Times(1);
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_two_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(50 * kBytesPerMegabyte,
-                                               0)).Times(1);
   }
 
   // simulate a byte counter update
@@ -1102,17 +1228,12 @@ TEST_F(DataPlanTest, ThreePlansThirdConsumed) {
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_one_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(200 * kBytesPerMegabyte,
-                                               0)).Times(1);
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_two_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(100 * kBytesPerMegabyte,
-                                               0)).Times(1);
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_three_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(0, 0)).Times(1);
     EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
   }
 
@@ -1158,18 +1279,12 @@ TEST_F(DataPlanTest, ThreePlansThirdConsumedWithOverage) {
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_one_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(210 * kBytesPerMegabyte,
-                                               0)).Times(1);
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_two_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(110 * kBytesPerMegabyte,
-                                               0)).Times(1);
     EXPECT_CALL(service_manager_mock_,
                 OnDataPlanInactive(testing::Ref(service_mock_),
                                    testing::Ref(*plan_three_))).Times(1);
-    EXPECT_CALL(device_mock_, ResetByteCounter(10 * kBytesPerMegabyte,
-                                               0)).Times(1);
     EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
   }
 

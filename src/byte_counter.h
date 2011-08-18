@@ -23,11 +23,14 @@ class ByteCounter {
 
     // received bytes
     virtual uint64 GetRxBytes() const = 0;
-    virtual void SetRxBytes(uint64 rx_bytes) = 0;
 
     // transmitted bytes
     virtual uint64 GetTxBytes() const = 0;
-    virtual void SetTxBytes(uint64 tx_bytes) = 0;
+
+    // reads byte usage stats
+    // does not update delegate with new counts
+    // returns true on success and false on failure
+    virtual bool ReadStats() = 0;
 
     // set delegate interface that will receive counter updates
     // it's ok to clear this by setting it to NULL
@@ -47,13 +50,6 @@ class ByteCounterDelegate {
     // called when |counter| is updated
     virtual void OnByteCounterUpdate(const ByteCounter *counter,
                                      uint64 rx_bytes, uint64 tx_bytes) = 0;
-
-    // called when |counter| is stopped
-    virtual void OnByteCounterStopped(const ByteCounter *counter) = 0;
-
-    // called when |counter| is reset
-    virtual void OnByteCounterReset(const ByteCounter *counter,
-        uint64 new_rx_bytes, uint64 new_tx_bytes) = 0;
 };
 
 }  // namespace cashew

@@ -48,15 +48,24 @@ DataPlan::DataPlan(const std::string& name, DataPlan::Type type,
                    base::Time update_time, base::Time start_time,
                    base::Time end_time, ByteCount data_bytes_max,
                    ByteCount data_bytes_used)
-    : name_(name), type_(type), update_time_(update_time),
+    : service_(NULL), name_(name), type_(type), update_time_(update_time),
       start_time_(start_time), end_time_(end_time),
       data_bytes_max_(data_bytes_max), data_bytes_used_(data_bytes_used),
-      local_bytes_used_(0), total_bytes_used_(data_bytes_used) {
-      CHECK_GE(data_bytes_max_, 0);
-      CHECK_GE(data_bytes_used_, 0);
+      local_bytes_used_(0), total_bytes_used_(data_bytes_used),
+      expiration_timeout_source_(NULL) {
+  CHECK_GE(data_bytes_max_, 0);
+  CHECK_GE(data_bytes_used_, 0);
+
+  // create and start the expiration timer
+  if (!CreateExpirationTimer()) {
+    LOG(WARNING) << "ctor: failed to create and start expiration timer";
+  }
 }
 
-DataPlan::~DataPlan() {}
+DataPlan::~DataPlan() {
+  // destroy the expiration timer
+  DestroyExpirationTimer();
+}
 
 const std::string& DataPlan::GetName() const {
   return name_;
@@ -94,8 +103,11 @@ ByteCount DataPlan::GetTotalBytesUsed() const {
   return total_bytes_used_;
 }
 
-// TODO(vlaviano): ensure that this method stops the plan's expiration timer
-// (when it is implemented in a future CL) if the plan is fully consumed
+void DataPlan::SetService(Service *service) {
+  CHECK(service != NULL);
+  service_ = service;
+}
+
 void DataPlan::SetLocalBytesUsed(ByteCount local_bytes_used) {
   CHECK_GE(local_bytes_used, 0);
   local_bytes_used_ = local_bytes_used;
@@ -104,19 +116,16 @@ void DataPlan::SetLocalBytesUsed(ByteCount local_bytes_used) {
     LOG(WARNING) << "SetLocalBytesUsed: overflow detected: |total_bytes_used|";
     total_bytes_used_ = kint64max;
   }
+
+  // if we run out of bytes, stop expiration timer
+  if (!HasBytesRemaining()) {
+    DestroyExpirationTimer();
+  }
 }
 
 bool DataPlan::IsActive() const {
-  // is the plan current?
-  base::Time now = base::Time::Now();
-  if (now < start_time_ || now >= end_time_) {
-    return false;
-  }
-  // is the plan exhausted?
-  if (type_ != kTypeUnlimited && total_bytes_used_ >= data_bytes_max_) {
-    return false;
-  }
-  return true;
+  // is the plan current and not exahusted?
+  return IsCurrent() && HasBytesRemaining();
 }
 
 DBusDataPlan DataPlan::ToDBusFormat() const {
@@ -320,89 +329,95 @@ DataPlan* DataPlan::GetActivePlan(const DataPlanList& data_plans) {
 }
 
 // static
+ByteCount DataPlan::AssignBytesToPlan(DataPlan *data_plan,
+                                      ByteCount bytes_to_assign) {
+  CHECK(data_plan != NULL);
+  CHECK_GE(bytes_to_assign, 0);
+
+  // we cannot assign any bytes to |data_plan| if it is inactive
+  if (!data_plan->IsActive()) {
+    LOG(INFO) << "AssignBytesToPlan: cannot assign bytes to inactive plan: "
+        << data_plan->GetName();
+    return 0;
+  }
+
+  ByteCount assigned_bytes = 0;
+  ByteCount data_remaining = 0;  // relevant for metered plans
+  if (data_plan->GetType() != DataPlan::kTypeUnlimited) {
+    data_remaining = data_plan->GetDataBytesMax() -
+        data_plan->GetTotalBytesUsed();
+    CHECK_GE(data_remaining, 0);
+  }
+  if (data_plan->GetType() == DataPlan::kTypeUnlimited ||
+      bytes_to_assign < data_remaining) {
+    // can assign all the bytes to |data_plan|
+    assigned_bytes = bytes_to_assign;
+  } else {
+    assigned_bytes = data_remaining;
+  }
+  CHECK_GE(assigned_bytes, 0);
+  data_plan->SetLocalBytesUsed(data_plan->GetLocalBytesUsed() + assigned_bytes);
+
+  LOG(INFO) << "AssignBytesToPlan: " << data_plan->GetName()
+      << ": updated plan state: data bytes used = "
+      << data_plan->GetDataBytesUsed() << ", local bytes used = "
+      << data_plan->GetLocalBytesUsed() << ", total bytes used = "
+      << data_plan->GetTotalBytesUsed();
+
+  return assigned_bytes;
+}
+
+// static
 bool DataPlan::OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
                                    ServiceManager *service_manager,
-                                   Device *device, uint64 rx_bytes,
-                                   uint64 tx_bytes) {
+                                   Device *device, uint64 delta_rx_bytes,
+                                   uint64 delta_tx_bytes) {
   DCHECK(data_plans != NULL);
   DCHECK(service != NULL);
   DCHECK(service_manager != NULL);
   DCHECK(device != NULL);
   DCHECK(device->ByteCounterRunning());
-  LOG(INFO) << "OnByteCounterUpdate: rx_bytes = " << rx_bytes
-      << ", tx_bytes = " << tx_bytes;
+
+  LOG(INFO) << "OnByteCounterUpdate: delta_rx_bytes = " << delta_rx_bytes
+      << ", delta_tx_bytes = " << delta_tx_bytes;
+
   DataPlan *active_plan = DataPlan::GetActivePlan(*data_plans);
   if (active_plan == NULL) {
     LOG(WARNING) << "OnByteCounterUpdate: no active plan";
     device->StopByteCounter();
     return false;
   }
-  ByteCount local_bytes_used = rx_bytes + tx_bytes;
-  LOG(INFO) << "OnByteCounterUpdate: local_bytes_used = " << local_bytes_used;
+
+  ByteCount used_bytes_to_assign = delta_rx_bytes + delta_tx_bytes;
   // try to detect two error conditions:
   // (1) overflow of the unsigned addition above prior to the assignment
   // (2) no overflow, but result has high order bit set and so is interpreted as
   //     a negative number when assigned to |local_bytes_used|
-  if (local_bytes_used < 0 ||
-      static_cast<uint64>(local_bytes_used) < rx_bytes ||
-      static_cast<uint64>(local_bytes_used) < tx_bytes) {
+  if (static_cast<uint64>(used_bytes_to_assign) < delta_rx_bytes ||
+      static_cast<uint64>(used_bytes_to_assign) < delta_tx_bytes ||
+      used_bytes_to_assign < 0) {
     LOG(WARNING) << "OnByteCounterUpdate: overflow detected:"
-        " |local_bytes_used|";
+        " |used_bytes_to_assign|";
     return false;
   }
-  // compute delta since last sample
-  // this delta represents the data usage that we need to assign to active plans
-  // this computation relies on the local counter being based on the currently
-  //   active plan
-  // TODO(vlaviano): Currently, this is not always true. It's possible for the
-  //   local byte counter to be associated with a plan that was active at the
-  //   beginning of the sample interval but has now expired. A future CL will
-  //   add expiration timers to plan objects to handle this case.
-  ByteCount previous_local_bytes_used = active_plan->GetLocalBytesUsed();
-  LOG(INFO) << "OnByteCounterUpdate: previous_local_bytes_used = "
-      << previous_local_bytes_used;
-  DCHECK_LE(previous_local_bytes_used, local_bytes_used);
-  ByteCount used_bytes_to_assign = local_bytes_used - previous_local_bytes_used;
   LOG(INFO) << "OnByteCounterUpdate: used_bytes_to_assign = "
       << used_bytes_to_assign;
+
   // iterate through active plans, assigning as much data as possible to each
   // plan and expiring it if its data quota is fully consumed
-  ByteCount assigned_bytes = 0;
   bool any_plan_updated = false;
   while (used_bytes_to_assign > 0 && active_plan != NULL) {
-    ByteCount active_plan_data_remaining = 0;  // relevant for metered plans
-    if (active_plan->GetType() != DataPlan::kTypeUnlimited) {
-      active_plan_data_remaining = active_plan->GetDataBytesMax() -
-          active_plan->GetTotalBytesUsed();
-      DCHECK_GE(active_plan_data_remaining, 0);
+    ByteCount bytes_assigned_to_active_plan = AssignBytesToPlan(active_plan,
+        used_bytes_to_assign);
+    CHECK_LE(bytes_assigned_to_active_plan, used_bytes_to_assign);
+    if (bytes_assigned_to_active_plan > 0) {
+      used_bytes_to_assign -= bytes_assigned_to_active_plan;
+      any_plan_updated = true;
     }
-    if (active_plan->GetType() == DataPlan::kTypeUnlimited ||
-        used_bytes_to_assign < active_plan_data_remaining) {
-      // can assign all data from this sample and plan not fully consumed
-      assigned_bytes = used_bytes_to_assign;
-      used_bytes_to_assign = 0;
-    } else {
-      // plan fully consumed, and there might be an overage remaining to be
-      // assigned to the next active plan
-      assigned_bytes = active_plan_data_remaining;
-      used_bytes_to_assign -= assigned_bytes;
-    }
-    DCHECK_GE(assigned_bytes, 0);
-    active_plan->SetLocalBytesUsed(previous_local_bytes_used + assigned_bytes);
-    any_plan_updated = true;
-    LOG(INFO) << "OnByteCounterUpdate: " << active_plan->GetName()
-        << ": updated plan state: data bytes used = "
-        << active_plan->GetDataBytesUsed() << ", local bytes used = "
-        << active_plan->GetLocalBytesUsed() << ", total bytes used = "
-        << active_plan->GetTotalBytesUsed();
 
-    if (!active_plan->IsActive()) {
-      // notify service manager that plan has become inactive
+    if (!active_plan->HasBytesRemaining()) {
+      // notify service manager that plan has become exhausted
       service_manager->OnDataPlanInactive(*service, *active_plan);
-
-      // we've consumed a plan, so reset byte counter to only reflect overage
-      // TODO(vlaviano): byte counter api shouldn't expose rx/tx split.
-      device->ResetByteCounter(used_bytes_to_assign, 0);
       active_plan = DataPlan::GetActivePlan(*data_plans);
     }
   }
@@ -420,6 +435,62 @@ bool DataPlan::OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
 }
 
 // private methods
+
+bool DataPlan::IsCurrent() const {
+  base::Time now = base::Time::Now();
+  return now >= start_time_ && now < end_time_;
+}
+
+bool DataPlan::HasBytesRemaining() const {
+  return type_ == kTypeUnlimited || total_bytes_used_ < data_bytes_max_;
+}
+
+void DataPlan::OnDataPlanExpired() {
+  CHECK(service_ != NULL);
+
+  if (!service_->OnDataPlanExpired(this)) {
+    LOG(WARNING) << "OnDataPlanExpired: failed to handle expired data plan";
+  }
+}
+
+// static
+gboolean DataPlan::StaticOnDataPlanExpired(gpointer data) {
+  DataPlan *data_plan = reinterpret_cast<DataPlan*>(data);
+  CHECK(data_plan != NULL);
+  data_plan->OnDataPlanExpired();
+  return FALSE;  // don't call back
+}
+
+bool DataPlan::CreateExpirationTimer() {
+  if (expiration_timeout_source_ != NULL) {
+    LOG(WARNING) << "CreateExpirationTimer: timer already running";
+    return false;
+  }
+
+  base::TimeDelta timeout = end_time_ - base::Time::Now();
+  expiration_timeout_source_ = g_timeout_source_new_seconds(
+      timeout.InSeconds());
+  if (expiration_timeout_source_ == NULL) {
+    LOG(WARNING) << "CreateExpirationTimer: failed to create timeout source";
+    return false;
+  }
+
+  g_source_set_callback(expiration_timeout_source_, StaticOnDataPlanExpired,
+                        this, NULL);
+  if (g_source_attach(expiration_timeout_source_, NULL) == 0) {
+    LOG(WARNING) << "CreateExpirationTimer: failed to attach timeout source";
+    return false;
+  }
+
+  return true;
+}
+
+void DataPlan::DestroyExpirationTimer() {
+  if (expiration_timeout_source_ != NULL) {
+    g_source_destroy(expiration_timeout_source_);
+    expiration_timeout_source_ = NULL;
+  }
+}
 
 const char* DataPlan::TypeToLibcrosString(DataPlan::Type type) const {
   switch (type) {
