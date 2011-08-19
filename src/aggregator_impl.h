@@ -15,6 +15,7 @@
 #include <gtest/gtest_prod.h>  // NOLINT
 
 #include "src/aggregator.h"
+#include "src/cashew_server.h"
 #include "src/data_plan.h"  // for ByteCount
 
 namespace cashew {
@@ -45,7 +46,7 @@ class AggregatorImpl : public Aggregator {
         uint64 delta_rx_bytes, uint64 delta_tx_bytes);
 
     // returns a map of date strings to bytes used
-    virtual std::map<std::string, int64_t> GetBytesPerDay();
+    virtual BytesPerDayRep GetBytesPerDay();
 
   private:
 
@@ -83,6 +84,9 @@ class AggregatorImpl : public Aggregator {
     static bool MapFromString(const std::string &table_str,
                               BytesPerDay *table_map);
 
+    // returns the std::string to int64_t mapping of |bytes_per_day|
+    static BytesPerDayRep GetBytesPerDayRep(BytesPerDay bytes_per_day);
+
     // gets rid of records in |bytes_per_day| that are at least
     //     |kCleanUpDays| days older than |baseline|
     static void TrimOldData(BytesPerDay *bytes_per_day, Date baseline);
@@ -110,6 +114,7 @@ class AggregatorImpl : public Aggregator {
     // for unit testing
     friend class AggregatorTest;
     FRIEND_TEST(AggregatorTest, MapStringConversion);
+    FRIEND_TEST(AggregatorTest, GetBytesPerDayRep);
     FRIEND_TEST(AggregatorTest, TrimOld);
 };  // AggregatorImpl
 

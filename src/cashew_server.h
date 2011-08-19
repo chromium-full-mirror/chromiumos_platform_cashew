@@ -23,6 +23,8 @@ namespace cashew {
 class Aggregator;
 class ServiceManager;
 
+typedef std::map<std::string, int64_t> BytesPerDayRep;
+
 // Implements Cashew D-Bus API
 class CashewServer : public org::chromium::Cashew_adaptor,
                      public DBus::IntrospectableAdaptor,
@@ -33,8 +35,6 @@ class CashewServer : public org::chromium::Cashew_adaptor,
                  GMainLoop * const main_loop,
                  Aggregator * const aggregator);
     virtual ~CashewServer();
-
-    typedef std::map<std::string, int64_t> BytesPerItem;
 
     // Cashew D-Bus API methods
 
@@ -47,8 +47,8 @@ class CashewServer : public org::chromium::Cashew_adaptor,
                                         DBus::Error& error);  // NOLINT
 
     // Called from Chrome when user wants usage information
-    virtual std::map<std::string, int64_t> RequestCellularUsageInfo(
-                                                 DBus::Error& error);  // NOLINT
+    virtual BytesPerDayRep RequestCellularUsageInfo(
+        DBus::Error& error);  // NOLINT
 
     // Test method to verify that Cashew service is working
     virtual bool IsAlive(DBus::Error& error);  // NOLINT

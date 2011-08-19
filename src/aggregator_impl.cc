@@ -131,11 +131,8 @@ void AggregatorImpl::OnByteCounterUpdate(const Service *service,
   }
 }
 
-std::map<std::string, int64_t> AggregatorImpl::GetBytesPerDay() {
-  std::map<std::string, int64_t> bytes_per_day;
-  // TODO(mikemeko): fill this function to return whatever structure
-  // contains our bytes per day info.
-  return bytes_per_day;
+BytesPerDayRep AggregatorImpl::GetBytesPerDay() {
+  return GetBytesPerDayRep(bytes_per_day_);
 }
 
 // private
@@ -227,6 +224,19 @@ bool AggregatorImpl::MapFromString(const std::string &table_str,
     return false;
   }
   return true;
+}
+
+// static
+BytesPerDayRep AggregatorImpl::GetBytesPerDayRep(
+    BytesPerDay bytes_per_day) {
+  BytesPerDayRep bytes_per_day_rep;
+  BytesPerDay::const_iterator it;
+  for (it = bytes_per_day.begin(); it != bytes_per_day.end(); ++it) {
+    std::string day = (it->first).ToString();
+    int64_t bytes = it->second;
+    bytes_per_day_rep[day] = bytes;
+  }
+  return bytes_per_day_rep;
 }
 
 // static

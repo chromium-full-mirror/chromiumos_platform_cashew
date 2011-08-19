@@ -10,6 +10,8 @@
 
 #include <base/basictypes.h>  // NOLINT
 
+#include "src/cashew_server.h"
+
 namespace cashew {
 
 class Service;
@@ -27,7 +29,7 @@ class Aggregator {
 
     // takes a map of strings to int64s and sets it to the dates for the past
     // year and their corresponding byte count.
-    virtual std::map<std::string, int64_t> GetBytesPerDay() = 0;
+    virtual BytesPerDayRep GetBytesPerDay() = 0;
 
     // factory
     static Aggregator* NewAggregator();

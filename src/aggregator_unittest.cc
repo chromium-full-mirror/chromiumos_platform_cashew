@@ -4,6 +4,7 @@
 
 #include "src/aggregator_impl.h"
 
+#include <map>
 #include <string>
 
 #include <base/stringprintf.h>  // NOLINT
@@ -44,8 +45,8 @@ TEST_F(AggregatorTest, MapStringConversion) {
   std::string table_str;
   Date date1(1970, 1, 1);
   Date date2(1970, 2, 2);
-  int bytes1 = 10;
-  int bytes2 = 20;
+  ByteCount bytes1 = 10;
+  ByteCount bytes2 = 20;
   base::StringAppendF(&table_str, AggregatorImpl::kLineFormat,
              date1.ToString().c_str(), AggregatorImpl::kColumnDelimiter,
              base::IntToString(bytes1).c_str());
@@ -62,6 +63,27 @@ TEST_F(AggregatorTest, MapStringConversion) {
   BytesPerDay table_map_from_str;
   EXPECT_TRUE(aggregator_->MapFromString(table_str, &table_map_from_str));
   ASSERT_TRUE(table_map == table_map_from_str);
+}
+
+// test for |GetBytesPerDayRep|
+TEST_F(AggregatorTest, GetBytesPerDayRep) {
+  Date date1(1970, 1, 1);
+  std::string date1_str = "1970-01-01";
+  ByteCount bytes1 = 10;
+  Date date2(1970, 2, 2);
+  std::string date2_str = "1970-02-02";
+  ByteCount bytes2 = 20;
+
+  BytesPerDay bytes_per_day;
+  bytes_per_day[date1] = bytes1;
+  bytes_per_day[date2] = bytes2;
+
+  BytesPerDayRep bytes_per_day_rep;
+  bytes_per_day_rep[date1_str] = bytes1;
+  bytes_per_day_rep[date2_str] = bytes2;
+
+  ASSERT_TRUE(bytes_per_day_rep ==
+              aggregator_->GetBytesPerDayRep(bytes_per_day));
 }
 
 // test for |TrimOldData|
