@@ -81,8 +81,8 @@ ServiceImpl::ServiceImpl(ServiceManager * const parent,
       metrics_manager_(CHECK_NOTNULL(metrics_manager)),
       aggregator_(CHECK_NOTNULL(aggregator)), prev_rx_bytes_(0),
       prev_tx_bytes_(0), path_(path), state_(kStateUnknown),
-      type_(kTypeUnknown), device_(NULL),
-      provider_(NULL), request_in_progress_(false),
+      type_(kTypeUnknown), device_(NULL), provider_(NULL),
+      request_in_progress_(false), usage_request_complete_(false),
       update_timeout_source_(NULL), policy_(NULL),
       is_default_service_(false), get_properties_source_id_(0),
       retrying_get_properties_(false) {
@@ -222,6 +222,9 @@ void ServiceImpl::OnCarrierUpdate(const std::string& carrier) {
   }
   DeleteCarrierState();
 
+  // we need to make a new request
+  usage_request_complete_ = false;
+
   // if we don't have new carrier info, we can't do anything now
   if (carrier.empty()) {
     return;
@@ -283,7 +286,8 @@ void ServiceImpl::OnByteCounterUpdate(uint64 rx_bytes, uint64 tx_bytes) {
 
   // dispatch this notification to our data plans list and consider sending
   // out a signal if any plans were updated
-  if (DataPlan::OnByteCounterUpdate(&data_plans_, this, parent_, device_,
+  if (usage_request_complete_ &&
+      DataPlan::OnByteCounterUpdate(&data_plans_, this, parent_, device_,
                                     delta_rx_bytes, delta_tx_bytes)) {
     MaybeEmitDataPlansUpdate();
   }
@@ -464,24 +468,17 @@ void ServiceImpl::OnRequestComplete(const DataPlanProvider *provider,
   LOG(INFO) << path_ << ": OnRequestComplete: deleting old data plans";
   DeleteDataPlans(&old_plans);
 
-  // start local byte counter so that we can stop hitting usage API
-  // we'll stop the counter when we disconnect
-  // we don't bother if carrier told us that there are no active data plans
+  // check if we have any active data plans associated with this service
   DataPlan *active_plan = DataPlan::GetActivePlan(data_plans_);
   if (active_plan == NULL) {
-    LOG(INFO) << path_
-        << ": OnRequestComplete: no active plans, not starting byte counter";
+    LOG(INFO) << path_ << ": OnRequestComplete: no active plans";
     return;
   }
-  DCHECK(device_ != NULL);
-  DCHECK(!device_->ByteCounterRunning());
-  if (!device_->StartByteCounter()) {
-    LOG(WARNING) << path_
-        << ": OnRequestComplete: could not start byte counter";
-    // we'll keep the update timer running and try again later
-  }
-  LOG(INFO) << path_ << ": OnRequestComplete: started byte counter";
-  ReconsiderSendingUsageRequests();
+
+  // we have a successfully completed usage API request
+  usage_request_complete_ = true;
+
+  StopSendingUsageRequests();
 }
 
 // Service Manager methods
@@ -565,6 +562,15 @@ void ServiceImpl::OnDeviceUpdate(const DBus::Path& device_path) {
   }
   LOG(INFO) << path_ << ": OnDeviceUpdate: created device for "
       << device_path;
+
+  // start the byte counter for the new device
+  if (device_ != NULL && IsConnected() && !device_->StartByteCounter()) {
+    LOG(WARNING) << path_ << ": OnDeviceUpdate: could not start byte counter";
+  }
+
+  // we need to make a new request
+  usage_request_complete_ = false;
+  ReconsiderSendingUsageRequests();
 }
 
 void ServiceImpl::OnStateUpdate(const std::string& state) {
@@ -591,6 +597,10 @@ void ServiceImpl::OnUsageUrlUpdate(const std::string& usage_url) {
   if (usage_url == usage_url_) {
     return;
   }
+
+  // we need to make a new request
+  usage_request_complete_ = false;
+
   usage_url_ = usage_url;
   if (provider_ != NULL) {
     DCHECK(usage_url_ != provider_->GetUsageUrl());
@@ -867,17 +877,29 @@ bool ServiceImpl::IsConnected() const {
 void ServiceImpl::OnConnected() {
   LOG(INFO) << path_ << ": OnConnected";
   DCHECK(IsConnected());
+  DCHECK(!usage_request_complete_);
+
+  // start byte counter
+  if (device_ != NULL && !device_->ByteCounterRunning() &&
+      !device_->StartByteCounter()) {
+    LOG(WARNING) << path_ << ": OnConnected: could not start byte counter";
+  }
+
   ReconsiderSendingUsageRequests();
 }
 
 void ServiceImpl::OnDisconnected() {
   LOG(INFO) << path_ << ": OnDisconnected";
   DCHECK(!IsConnected());
+
   // stop byte counter
-  // we'll issue a new usage API request when we reconnect
   if (device_ != NULL) {
     device_->StopByteCounter();
   }
+
+  // we'll issue a new usage API request when we reconnect
+  usage_request_complete_ = false;
+
   ReconsiderSendingUsageRequests();
 }
 
@@ -888,6 +910,11 @@ bool ServiceImpl::IsSendingUsageRequests() const {
 // NOTE: we centralize our decisionmaking here to avoid insanity and just call
 // ReconsiderSendingUsageRequests when anything changes
 bool ServiceImpl::ShouldSendUsageRequests() const {
+  if (usage_request_complete_) {
+    LOG(INFO) << path_ <<
+        ": ShouldSendUsageRequests: no: request already completed";
+    return false;
+  }
   if (provider_ == NULL) {
     LOG(INFO) << path_ << ": ShouldSendUsageRequests: no: no provider";
     DCHECK(policy_ == NULL);
@@ -906,11 +933,6 @@ bool ServiceImpl::ShouldSendUsageRequests() const {
   }
   if (!IsDefaultService()) {
     LOG(INFO) << path_ << ": ShouldSendUsageRequests: no: not default service";
-    return false;
-  }
-  if (device_->ByteCounterRunning()) {
-    LOG(INFO) << path_
-        << ": ShouldSendUsageRequests: no: local byte counter is running";
     return false;
   }
   LOG(INFO) << path_ << ": ShouldSendUsageRequests: yes";

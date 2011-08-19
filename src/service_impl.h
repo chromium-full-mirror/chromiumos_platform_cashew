@@ -137,6 +137,10 @@ class ServiceImpl : public Service,
     // do we have an outstanding usage API request
     bool request_in_progress_;
 
+    // do we have a successfully completed usage API request
+    // relevant for services that implement the Chrome OS usage API
+    bool usage_request_complete_;
+
     // periodic update timeout
     GSource *update_timeout_source_;
 
