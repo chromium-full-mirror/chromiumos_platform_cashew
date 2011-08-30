@@ -23,6 +23,7 @@ static const char *kFlimflamServiceDeviceProperty = "Device";
 static const char *kFlimflamServiceStateProperty = "State";
 static const char *kFlimflamServiceTypeProperty = "Type";
 static const char *kFlimflamServiceUsageUrlProperty = "Cellular.UsageUrl";
+static const char *kFlimflamServiceStickyHostRouteProperty = "StickyHostRoute";
 
 // Flimflam Service on-the-wire State values
 static const char *kFlimflamServiceStateIdle = "idle";
@@ -204,6 +205,8 @@ void ServiceImpl::OnPropertyChanged(const PropertyChangedHandler *handler,
     OnTypeUpdate(new_value.reader().get_string());
   } else if (property_name == kFlimflamServiceUsageUrlProperty) {
     OnUsageUrlUpdate(new_value.reader().get_string());
+  } else if (property_name == kFlimflamServiceStickyHostRouteProperty) {
+    OnStickyHostRouteUpdate(new_value.reader().get_string());
   } else {
     // we don't care about this property
   }
@@ -610,6 +613,16 @@ void ServiceImpl::OnUsageUrlUpdate(const std::string& usage_url) {
   }
 }
 
+void ServiceImpl::OnStickyHostRouteUpdate(const std::string& sticky_route) {
+  LOG(INFO) << path_ << ": OnStickyHostRouteUpdate: sticky route = "
+      << sticky_route;
+  if (sticky_route == sticky_host_route_) {
+    return;
+  }
+  sticky_host_route_ = sticky_route;
+  ReconsiderSendingUsageRequests();
+}
+
 // static
 gboolean ServiceImpl::StaticGetServicePropertiesCallback(gpointer data) {
   ServiceImpl *service = reinterpret_cast<ServiceImpl*>(data);
@@ -690,6 +703,14 @@ bool ServiceImpl::GetServiceProperties() {
     OnTypeUpdate(value.reader().get_string());
   } else {
     LOG(WARNING) << path_ << ": GetServiceProperties: no Type property";
+  }
+  it = properties.find(kFlimflamServiceStickyHostRouteProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    OnStickyHostRouteUpdate(value.reader().get_string());
+  } else {
+    LOG(WARNING) << path_
+        << ": GetServiceProperties: no StickyHostRoute property";
   }
   // don't expect to find Cellular.* properties if we're not a cellular service
   if (type_ != kTypeCellular) {
@@ -907,8 +928,6 @@ bool ServiceImpl::IsSendingUsageRequests() const {
   return request_in_progress_ || update_timeout_source_ != NULL;
 }
 
-// NOTE: we centralize our decisionmaking here to avoid insanity and just call
-// ReconsiderSendingUsageRequests when anything changes
 bool ServiceImpl::ShouldSendUsageRequests() const {
   if (usage_request_complete_) {
     LOG(INFO) << path_ <<
@@ -931,8 +950,9 @@ bool ServiceImpl::ShouldSendUsageRequests() const {
     LOG(INFO) << path_ << ": ShouldSendUsageRequests: no: not connected";
     return false;
   }
-  if (!IsDefaultService()) {
-    LOG(INFO) << path_ << ": ShouldSendUsageRequests: no: not default service";
+  if (sticky_host_route_.empty() && !IsDefaultService()) {
+    LOG(INFO) << path_ << ": ShouldSendUsageRequests: "
+        << "no: no sticky host route and not default service";
     return false;
   }
   LOG(INFO) << path_ << ": ShouldSendUsageRequests: yes";

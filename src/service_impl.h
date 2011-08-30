@@ -163,6 +163,10 @@ class ServiceImpl : public Service,
     // See comments in service_manager.h
     PropertyChangedHandler property_changed_handler_;
 
+    // Dotted decimal IP addr for which service has a sticky host route
+    // empty string represents "none"
+    std::string sticky_host_route_;
+
     // convert state string to State enum value
     static State StateFromString(const std::string& state);
 
@@ -177,6 +181,9 @@ class ServiceImpl : public Service,
 
     // we've received updated Cellular.UsageUrl info from Flimflam
     void OnUsageUrlUpdate(const std::string& usage_url);
+
+    // We've received updated StickyHostRoute info from Flimflam
+    void OnStickyHostRouteUpdate(const std::string& sticky_host_route);
 
     // glib integration: static wrapper for GetServiceProperties
     // takes object ptr as data and invokes object->GetServiceProperties()
