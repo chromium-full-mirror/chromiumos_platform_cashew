@@ -70,6 +70,9 @@ class LibcurlHttpFetcher : public HttpFetcher {
   // Asks libcurl for the http response code and stores it in the object.
   void GetHttpResponseCode();
 
+  // Retrieves and logs detailed error info if a request fails.
+  void CheckRequestStatus();
+
   // Resumes a transfer where it left off. This will use the
   // HTTP Range: header to make a new connection from where the last
   // left off.

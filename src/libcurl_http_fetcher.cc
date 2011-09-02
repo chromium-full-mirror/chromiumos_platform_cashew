@@ -24,6 +24,9 @@ namespace cashew {
 namespace {
 const int kMaxRetriesCount = 20;
 const char *kCashewUserAgent = PACKAGE_STRING;
+const int kTimeoutCallbackLogInterval = 15;
+const int kConnectTimeoutSeconds = 30;
+const int kRequestTimeoutSeconds = 30;
 }
 
 LibcurlHttpFetcher::~LibcurlHttpFetcher() {
@@ -78,8 +81,18 @@ void LibcurlHttpFetcher::ResumeTransfer(const std::string& url) {
   // Makes sure that peer certificate verification is enabled
   CHECK_EQ(curl_easy_setopt(curl_handle_, CURLOPT_SSL_VERIFYPEER, 1), CURLE_OK);
 
-  // set User-Agent header field since some servers require it to be present
+  // Set User-Agent header field since some servers require it to be present.
   CHECK_EQ(curl_easy_setopt(curl_handle_, CURLOPT_USERAGENT, kCashewUserAgent),
+           CURLE_OK);
+
+  // Set timeout for TCP connections.
+  CHECK_EQ(curl_easy_setopt(curl_handle_, CURLOPT_CONNECTTIMEOUT,
+                            kConnectTimeoutSeconds),
+           CURLE_OK);
+
+  // Set timeout for HTTP requests.
+  CHECK_EQ(curl_easy_setopt(curl_handle_, CURLOPT_TIMEOUT,
+                            kRequestTimeoutSeconds),
            CURLE_OK);
 
   CHECK_EQ(curl_multi_add_handle(curl_multi_handle_, curl_handle_), CURLM_OK);
@@ -120,6 +133,8 @@ void LibcurlHttpFetcher::CurlPerformOnce() {
     } else {
       LOG(WARNING) << "Unable to get http response code.";
     }
+
+    CheckRequestStatus();
 
     // we're done!
     CleanUp();
@@ -285,7 +300,8 @@ gboolean LibcurlHttpFetcher::RetryTimeoutCallback() {
 }
 
 gboolean LibcurlHttpFetcher::TimeoutCallback() {
-  LOG(INFO) << "TimeoutCallback";
+  LOG_EVERY_N(INFO, kTimeoutCallbackLogInterval) << "TimeoutCallback ("
+      << google::COUNTER << ")";
   // We always return true, even if we don't want glib to call us back.
   // We will remove the event source separately if we don't want to
   // be called back.
@@ -335,6 +351,20 @@ void LibcurlHttpFetcher::GetHttpResponseCode() {
   } else {
     LOG(WARNING) << "GetHttpResponseCode: curl_easy_getinfo failed: "
         << curl_easy_strerror(result);
+  }
+}
+
+void LibcurlHttpFetcher::CheckRequestStatus() {
+  int remaining_updates;
+  CURLMsg *request_status;
+  while ((request_status =
+      curl_multi_info_read(curl_multi_handle_, &remaining_updates)) != NULL) {
+    if (request_status->msg != CURLMSG_DONE) {
+      continue;
+    }
+    CURLcode code = static_cast<CURLcode>(request_status->data.result);
+    LOG(WARNING) << "CheckRequestStatus: result = " << code << ": "
+        << curl_easy_strerror(code);
   }
 }
 
