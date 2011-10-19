@@ -80,6 +80,7 @@ class HttpFetcher {
 
   // The delegate; may be NULL.
   HttpFetcherDelegate* delegate_;
+
  private:
   DISALLOW_COPY_AND_ASSIGN(HttpFetcher);
 };
