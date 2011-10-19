@@ -56,7 +56,7 @@ ProcfsByteCounter::ProcfsByteCounter(const std::string& interface)
 ProcfsByteCounter::~ProcfsByteCounter() {
   DCHECK(proc_net_dev_fp_ == NULL);
   if (read_stats_source_id_ != 0 && !g_source_remove(read_stats_source_id_)) {
-    LOG(WARNING) << interface_ << ": dtor: g_source_remove_failed";
+    LOG(WARNING) << interface_ << ": dtor: g_source_remove failed";
   }
   // read and update delegate with most recent stats
   if (!UpdateDelegateWithStats()) {

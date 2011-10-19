@@ -384,7 +384,6 @@ bool DataPlan::OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
   DataPlan *active_plan = DataPlan::GetActivePlan(*data_plans);
   if (active_plan == NULL) {
     LOG(WARNING) << "OnByteCounterUpdate: no active plan";
-    device->StopByteCounter();
     return false;
   }
 

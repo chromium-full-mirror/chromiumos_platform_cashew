@@ -631,19 +631,15 @@ TEST_F(DataPlanTest, AssignBytesToMeteredWithOverage) {
 
 // tests for local byte counter maintenance across plan transitions
 
-// empty list, we should stop the counter
+// empty list, call should fail
 TEST_F(DataPlanTest, NoActivePlans) {
   // create empty list
   DataPlanList data_plans;
   ASSERT_TRUE(data_plans.empty());
 
   // set up mock expectations and method return values
-  {
-    testing::InSequence expect_calls_in_order;
-    EXPECT_CALL(device_mock_, ByteCounterRunning())
-        .WillRepeatedly(testing::Return(true));
-    EXPECT_CALL(device_mock_, StopByteCounter()).Times(1);
-  }
+  EXPECT_CALL(device_mock_, ByteCounterRunning())
+      .WillRepeatedly(testing::Return(true));
 
   // simulate a byte counter update
   uint64 rx_bytes = 25 * kBytesPerMegabyte;
@@ -654,7 +650,6 @@ TEST_F(DataPlanTest, NoActivePlans) {
                                               tx_bytes);
 
   // check if test passed
-  // failure will most likely manifest as violated mock expectation
   EXPECT_FALSE(result);
 }
 
