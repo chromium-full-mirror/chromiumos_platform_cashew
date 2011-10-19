@@ -49,7 +49,6 @@ class AggregatorImpl : public Aggregator {
     virtual BytesPerDayRep GetBytesPerDay();
 
   private:
-
     // have I been successfully initialized via Init()?
     bool initialized_;
 
