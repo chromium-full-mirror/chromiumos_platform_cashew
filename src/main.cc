@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include <glib.h>
+#include <glib-unix.h>
 
 #include <dbus-c++/dbus.h>
 #include <dbus-c++/glib-integration.h>
@@ -31,14 +32,11 @@ typedef int Signal;
 typedef void (*SignalHandler)(Signal signal);
 
 int InstallSignalHandler(const Signal signal,
-                         const SignalHandler signal_handler,
-                         const sigset_t& mask) {
-  LOG(INFO) << "installing handler for signal " << signal;
-  struct sigaction action;
-  memset(&action, 0, sizeof(action));
-  action.sa_handler = signal_handler;
-  action.sa_mask = mask;
-  return sigaction(signal, &action, NULL);
+                         GSourceFunc signal_handler) {
+  LOG(INFO) << "installing handler for  signal " << signal;
+
+  g_unix_signal_add(signal, signal_handler, reinterpret_cast<void*>(signal));
+  return 0;
 }
 
 static GMainLoop *main_loop = NULL;
@@ -48,34 +46,21 @@ static Aggregator *aggregator = NULL;
 static ServiceManager *service_manager = NULL;
 static CashewServer *server = NULL;
 
-static void OnSignal(int signal) {
+static gboolean OnSignal(gpointer user_data) {
+  long signal = reinterpret_cast<long>(user_data);
   LOG(INFO) << "received signal " << signal;
   if (main_loop != NULL) {
-    // TODO(vlaviano): g_idle_add a callback to quit the main loop instead of
-    // doing it directly here to remove some low severity races
     g_main_loop_quit(main_loop);
   }
+  return TRUE;
 }
 
 int InstallSignalHandlers() {
-  sigset_t mask;
-  if (sigemptyset(&mask) < 0) {
-    PLOG(ERROR) << "sigemptyset failed";
-    return -1;
-  }
-  if (sigaddset(&mask, SIGINT) < 0) {
-    PLOG(ERROR) << "couldn't add SIGINT to mask";
-    return -1;
-  }
-  if (sigaddset(&mask, SIGTERM) < 0) {
-    PLOG(ERROR) << "couldn't add SIGTERM to mask";
-    return -1;
-  }
-  if (InstallSignalHandler(SIGINT, OnSignal, mask) < 0) {
+  if (InstallSignalHandler(SIGINT, OnSignal) < 0) {
     PLOG(ERROR) << "couldn't install SIGINT handler";
     return -1;
   }
-  if (InstallSignalHandler(SIGTERM, OnSignal, mask) < 0) {
+  if (InstallSignalHandler(SIGTERM, OnSignal) < 0) {
     PLOG(ERROR) << "couldn't install SIGTERM handler";
     return -1;
   }
