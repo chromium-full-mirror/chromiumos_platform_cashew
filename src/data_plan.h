@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,9 +15,8 @@
 
 #include <base/basictypes.h>  // NOLINT
 #include <base/time.h>  // NOLINT
+#include <base/values.h>
 #include <dbus-c++/dbus.h>  // NOLINT
-
-#include "src/values.h"
 
 namespace cashew {
 

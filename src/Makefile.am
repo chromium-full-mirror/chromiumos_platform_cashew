@@ -34,8 +34,6 @@ libcashew_la_SOURCES = \
   device_impl.h \
   device_impl.cc \
   http_fetcher.h \
-  json_reader.h \
-  json_reader.cc \
   libcurl_http_fetcher.h \
   libcurl_http_fetcher.cc \
   metrics_manager.h \
@@ -55,9 +53,7 @@ libcashew_la_SOURCES = \
   service_manager.h \
   service_manager.cc \
   service_manager_impl.h \
-  service_manager_impl.cc \
-  values.h \
-  values.cc
+  service_manager_impl.cc
 
 # D-Bus server stub generation
 DBUSXX_XML2CPP = dbusxx-xml2cpp
@@ -148,11 +144,9 @@ cashew_unittest_SOURCES = \
   date_unittest.cc \
   default_policy_unittest.cc \
   device_mock.h \
-  json_reader_unittest.cc \
   procfs_byte_counter_unittest.cc \
   service_manager_mock.h \
-  service_mock.h \
-  values_unittest.cc
+  service_mock.h
 
 GMOCK_CFLAGS =
 GMOCK_LIBS = -lgmock

@@ -1,13 +1,13 @@
-// Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/json/json_reader.h>
 #include <base/memory/scoped_ptr.h>
 #include <gtest/gtest.h>
 
 #include "src/data_plan.h"
 #include "src/device_mock.h"
-#include "src/json_reader.h"
 #include "src/policy.h"
 #include "src/service_manager_mock.h"
 #include "src/service_mock.h"
@@ -245,7 +245,8 @@ TEST_F(DataPlanDeathTest, NullTimeOutPtr) {
 }
 
 TEST_F(DataPlanTest, FromDictionaryValueMeteredWithUsedBytes) {
-  scoped_ptr<Value> value(JSONReader::Read(kMeteredWithUsedBytesJSON, true));
+  scoped_ptr<Value> value(base::JSONReader::Read(kMeteredWithUsedBytesJSON,
+                                                 true));
   ASSERT_TRUE(value != NULL);
   ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));
   const DictionaryValue *dict_value =
@@ -258,7 +259,8 @@ TEST_F(DataPlanTest, FromDictionaryValueMeteredWithUsedBytes) {
 }
 
 TEST_F(DataPlanTest, FromDictonaryValueMeteredWithNoUsedBytes) {
-  scoped_ptr<Value> value(JSONReader::Read(kMeteredWithNoUsedBytesJSON, true));
+  scoped_ptr<Value> value(base::JSONReader::Read(kMeteredWithNoUsedBytesJSON,
+                                                 true));
   ASSERT_TRUE(value != NULL);
   ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));
   const DictionaryValue *dict_value =
@@ -270,7 +272,8 @@ TEST_F(DataPlanTest, FromDictonaryValueMeteredWithNoUsedBytes) {
 }
 
 TEST_F(DataPlanTest, FromDictionaryValueUnlimitedWithUsedBytes) {
-  scoped_ptr<Value> value(JSONReader::Read(kUnlimitedWithUsedBytesJSON, true));
+  scoped_ptr<Value> value(base::JSONReader::Read(kUnlimitedWithUsedBytesJSON,
+                                                 true));
   ASSERT_TRUE(value != NULL);
   ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));
   const DictionaryValue *dict_value =
@@ -283,8 +286,8 @@ TEST_F(DataPlanTest, FromDictionaryValueUnlimitedWithUsedBytes) {
 }
 
 TEST_F(DataPlanTest, FromDictionaryValueUnlimitedWithNoUsedBytes) {
-  scoped_ptr<Value> value(JSONReader::Read(kUnlimitedWithNoUsedBytesJSON,
-                                           true));
+  scoped_ptr<Value> value(base::JSONReader::Read(kUnlimitedWithNoUsedBytesJSON,
+                                                 true));
   ASSERT_TRUE(value != NULL);
   ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));
   const DictionaryValue *dict_value =
@@ -298,8 +301,8 @@ TEST_F(DataPlanTest, FromDictionaryValueUnlimitedWithNoUsedBytes) {
 }
 
 TEST_F(DataPlanTest, FromDictionaryValue32BitSignedOverflowingMaxBytes) {
-  scoped_ptr<Value> value(JSONReader::Read(k32BitSignedOverflowingMaxBytesJSON,
-                                           true));
+  scoped_ptr<Value> value(base::JSONReader::Read(
+    k32BitSignedOverflowingMaxBytesJSON, true));
   ASSERT_TRUE(value != NULL);
   ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));
   const DictionaryValue *dict_value =
@@ -311,7 +314,7 @@ TEST_F(DataPlanTest, FromDictionaryValue32BitSignedOverflowingMaxBytes) {
 }
 
 TEST_F(DataPlanTest, FromDictionaryValue32BitUnsignedOverflowingMaxBytes) {
-  scoped_ptr<Value> value(JSONReader::Read(
+  scoped_ptr<Value> value(base::JSONReader::Read(
       k32BitUnsignedOverflowingMaxBytesJSON, true));
   ASSERT_TRUE(value != NULL);
   ASSERT_TRUE(value->IsType(Value::TYPE_DICTIONARY));

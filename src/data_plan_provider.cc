@@ -1,15 +1,15 @@
-// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "src/data_plan_provider.h"
 
+#include <base/json/json_reader.h>
 #include <base/memory/scoped_ptr.h>
+#include <base/values.h>
 #include <glog/logging.h>
 
-#include "src/json_reader.h"
 #include "src/libcurl_http_fetcher.h"
-#include "src/values.h"
 
 namespace cashew {
 
@@ -121,8 +121,8 @@ void DataPlanProvider::TransferComplete(HttpFetcher *fetcher,
   int error_code;
   std::string error_msg;
   scoped_ptr<Value> parsed_usage_update(
-      JSONReader::ReadAndReturnError(json_encoded_usage_update, true,
-                                     &error_code, &error_msg));
+      base::JSONReader::ReadAndReturnError(json_encoded_usage_update, true,
+                                           &error_code, &error_msg));
   if (parsed_usage_update == NULL) {
     LOG(WARNING) << carrier_ << ": TransferComplete: could not parse json: "
         << "error code " << error_code << ": " << error_msg;

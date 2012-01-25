@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -530,7 +530,9 @@ bool DataPlan::GetInt64FromDictionary(const DictionaryValue& dict,
     *out_value = generic_int_out;
     return true;
   }
-  if (dict.GetInteger64(key, out_value)) {
+  double generic_double_out = 0;
+  if (dict.GetDouble(key, &generic_double_out)) {
+    *out_value = generic_double_out;
     return true;
   }
   return false;
