@@ -1,4 +1,4 @@
-# Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
+# Copyright (c) 2012 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -83,9 +83,6 @@ CLEANFILES = $(BUILT_SOURCES)
 # most CFLAGS and LIBS info comes from PKG_CHECK_MODULES checks in configure.ac
 # we manually define info below for libs with no pkg-config file
 
-LIBBASE_CFLAGS =
-LIBBASE_LIBS = -lbase
-
 GFLAGS_CFLAGS =
 GFLAGS_LIBS = -lgflags
 
@@ -97,7 +94,7 @@ METRICS_LIBS = -lmetrics
 COMMON_CFLAGS = \
   -Wall -Werror \
   -I$(top_srcdir)/src \
-  $(LIBBASE_CFLAGS) \
+  @BASE_CFLAGS@ \
   @CURL_CFLAGS@ \
   @DBUS_CPP_CFLAGS@ \
   $(GFLAGS_CFLAGS) \
@@ -106,7 +103,7 @@ COMMON_CFLAGS = \
   $(METRICS_CFLAGS)
 
 COMMON_LIBS = \
-  $(LIBBASE_LIBS) \
+  @BASE_LIBS@ \
   @CURL_LIBS@ \
   @DBUS_CPP_LIBS@ \
   $(GFLAGS_LIBS) \
