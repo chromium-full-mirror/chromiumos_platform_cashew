@@ -90,9 +90,12 @@ TEST_F(AggregatorTest, GetBytesPerDayRep) {
 TEST_F(AggregatorTest, TrimOld) {
   base::Time baseline_time = base::Time::Now();
   base::Time trim_1 = baseline_time -
-      base::TimeDelta::FromDays(AggregatorImpl::kCleanUpDays);
-  base::Time trim_2 = baseline_time -
       base::TimeDelta::FromDays(AggregatorImpl::kCleanUpDays + 1);
+  base::Time trim_2 = baseline_time -
+      base::TimeDelta::FromDays(AggregatorImpl::kCleanUpDays + 2);
+  // Don't test base::TimeDelta::FromDays(AggregatorImpl::kCleanUpDays), since
+  // this can cause rounding errors, and there's no need for this code to be
+  // second-accurate.
   base::Time dont_trim_1 = baseline_time -
       base::TimeDelta::FromDays(AggregatorImpl::kCleanUpDays - 1);
   base::Time dont_trim_2 = baseline_time -
@@ -111,8 +114,7 @@ TEST_F(AggregatorTest, TrimOld) {
   bytes_per_day[dont_trim_date_2] = 0;
 
   aggregator_->TrimOldData(&bytes_per_day, baseline_date);
-//TODO: Fix this unit test on amd64-generic
-//  ASSERT_TRUE(bytes_per_day.find(trim_date_1) == bytes_per_day.end());
+  ASSERT_TRUE(bytes_per_day.find(trim_date_1) == bytes_per_day.end());
   ASSERT_TRUE(bytes_per_day.find(trim_date_2) == bytes_per_day.end());
   ASSERT_TRUE(bytes_per_day.find(dont_trim_date_1) != bytes_per_day.end());
   ASSERT_TRUE(bytes_per_day.find(dont_trim_date_2) != bytes_per_day.end());
