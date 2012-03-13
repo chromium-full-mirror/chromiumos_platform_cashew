@@ -90,9 +90,12 @@ TEST_F(AggregatorTest, GetBytesPerDayRep) {
 TEST_F(AggregatorTest, TrimOld) {
   base::Time baseline_time = base::Time::Now();
   base::Time trim_1 = baseline_time -
-      base::TimeDelta::FromDays(AggregatorImpl::kCleanUpDays);
-  base::Time trim_2 = baseline_time -
       base::TimeDelta::FromDays(AggregatorImpl::kCleanUpDays + 1);
+  base::Time trim_2 = baseline_time -
+      base::TimeDelta::FromDays(AggregatorImpl::kCleanUpDays + 2);
+  // Don't test base::TimeDelta::FromDays(AggregatorImpl::kCleanUpDays), since
+  // this can cause rounding errors, and there's no need for this code to be
+  // second-accurate.
   base::Time dont_trim_1 = baseline_time -
       base::TimeDelta::FromDays(AggregatorImpl::kCleanUpDays - 1);
   base::Time dont_trim_2 = baseline_time -
