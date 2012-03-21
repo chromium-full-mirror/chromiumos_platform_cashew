@@ -39,6 +39,10 @@ class HttpFetcher {
   HttpFetcherDelegate* delegate() const { return delegate_; }
   int http_response_code() const { return http_response_code_; }
 
+  // Optional: Set the name servers to use
+  void set_nameservers(const std::vector<std::string>& nameservers) {
+    nameservers_ = nameservers; }
+
   // Optional: Post data to the server. The HttpFetcher should make a copy
   // of this data and upload it via HTTP POST during the transfer.
   void SetPostData(const void* data, size_t size) {
@@ -68,6 +72,9 @@ class HttpFetcher {
  protected:
   // The URL we're actively fetching from
   std::string url_;
+
+  // The name servers to use (if not empty).
+  std::vector<std::string> nameservers_;
 
   // POST data for the transfer, and whether or not it was ever set
   bool post_data_set_;

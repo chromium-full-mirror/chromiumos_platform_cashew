@@ -10,11 +10,13 @@
 #include <config.h>
 
 #include <algorithm>
+#include <vector>
 
 #include <glog/logging.h>  // NOLINT
 
 using std::max;
 using std::make_pair;
+using std::vector;
 
 // This is a concrete implementation of HttpFetcher that uses libcurl to do the
 // http work.
@@ -42,6 +44,22 @@ void LibcurlHttpFetcher::ResumeTransfer(const std::string& url) {
 
   curl_handle_ = curl_easy_init();
   CHECK(curl_handle_);
+
+  std::string nameservers_str;
+  for (vector<std::string>::const_iterator it(nameservers_.begin());
+       it != nameservers_.end(); it++) {
+    if (!nameservers_str.empty())
+      nameservers_str += ",";
+    nameservers_str += *it;
+  }
+  LOG(INFO) << "LibcurlHttpFetcher: nameservers = " << nameservers_str;
+
+  if (!nameservers_str.empty()) {
+    CHECK_EQ(curl_easy_setopt(curl_handle_,
+                              CURLOPT_DNS_SERVERS,
+                              nameservers_str.c_str()),
+             CURLE_OK);
+  }
 
   if (post_data_set_) {
     CHECK_EQ(curl_easy_setopt(curl_handle_, CURLOPT_POST, 1), CURLE_OK);
