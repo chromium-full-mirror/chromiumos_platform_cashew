@@ -63,6 +63,8 @@ cashew_server_glue.h: $(top_srcdir)/introspection/cashew.xml
 # D-Bus client stub generation
 flimflam_device_client_glue.h: $(top_srcdir)/extrospection/flimflam-device.xml
 	$(DBUSXX_XML2CPP) $^ --proxy=$@
+flimflam_ipconfig_client_glue.h: $(top_srcdir)/extrospection/flimflam-ipconfig.xml
+	$(DBUSXX_XML2CPP) $^ --proxy=$@
 flimflam_manager_client_glue.h: $(top_srcdir)/extrospection/flimflam-manager.xml
 	$(DBUSXX_XML2CPP) $^ --proxy=$@
 flimflam_service_client_glue.h: $(top_srcdir)/extrospection/flimflam-service.xml
@@ -71,6 +73,7 @@ flimflam_service_client_glue.h: $(top_srcdir)/extrospection/flimflam-service.xml
 BUILT_SOURCES = \
   cashew_server_glue.h \
   flimflam_device_client_glue.h \
+  flimflam_ipconfig_client_glue.h \
   flimflam_manager_client_glue.h \
   flimflam_service_client_glue.h
 

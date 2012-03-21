@@ -4,5 +4,6 @@
 
 EXTRA_DIST = \
   flimflam-device.xml \
+  flimflam-ipconfig.xml \
   flimflam-manager.xml \
   flimflam-service.xml
