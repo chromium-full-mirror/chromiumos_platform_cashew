@@ -34,6 +34,10 @@ libcashew_la_SOURCES = \
   device_impl.h \
   device_impl.cc \
   http_fetcher.h \
+  ipconfig.h \
+  ipconfig.cc \
+  ipconfig_impl.h \
+  ipconfig_impl.cc \
   libcurl_http_fetcher.h \
   libcurl_http_fetcher.cc \
   metrics_manager.h \
