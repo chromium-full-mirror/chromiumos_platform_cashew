@@ -10,7 +10,7 @@
 
 #include <base/basictypes.h>  // NOLINT
 #include <base/memory/scoped_ptr.h>  // NOLINT
-#include <base/values.h>
+#include <base/values.h> // NOLINT
 
 #include "src/http_fetcher.h"
 
@@ -36,6 +36,9 @@ class DataPlanProvider: public HttpFetcherDelegate {
     // set delegate interface that will receive callbacks from this proxy
     // it's ok to clear this by setting it to NULL
     virtual void SetDelegate(DataPlanProviderDelegate *delegate);
+
+    // set the name servers which should be used for requests
+    void SetNameServers(const std::vector<std::string>& nameservers);
 
     // request that proxy obtain updated info from carrier API
     // NOTES:

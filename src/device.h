@@ -6,6 +6,7 @@
 #define SRC_DEVICE_H_
 
 #include <string>
+#include <vector>
 
 #include <base/basictypes.h>  // NOLINT
 #include <dbus-c++/dbus.h>  // NOLINT
@@ -48,6 +49,12 @@ class Device {
     // get interface name for this device (e.g., "usb0")
     // returns empty string if we don't know
     virtual const std::string& GetInterface() const = 0;
+
+    // get nameservers used by this device
+    // returns a comma separated list of nameservers
+    // empty string if we don't know
+    virtual void GetNameServers(
+        std::vector<std::string>* nameservers) const = 0;
 
     // Service methods
 

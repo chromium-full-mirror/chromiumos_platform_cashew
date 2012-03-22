@@ -6,12 +6,16 @@
 
 #include <glog/logging.h>
 
+#include <vector>
+
 #include "src/aggregator.h"
 #include "src/data_plan.h"
 #include "src/data_plan_provider.h"
 #include "src/device.h"
 #include "src/policy.h"
 #include "src/service_manager.h"
+
+using std::vector;
 
 namespace cashew {
 
@@ -254,6 +258,11 @@ void ServiceImpl::OnCarrierUpdate(const std::string& carrier) {
   // if we already have usage url, set new provider in motion
   if (!usage_url_.empty()) {
     provider_->SetUsageUrl(usage_url_);
+
+    vector<std::string> nameservers;
+    device_->GetNameServers(&nameservers);
+    provider_->SetNameServers(nameservers);
+
     ReconsiderSendingUsageRequests();
   } else {
     // we'll do this later in OnUsageUrlUpdate
@@ -904,6 +913,15 @@ void ServiceImpl::OnConnected() {
   if (device_ != NULL && !device_->ByteCounterRunning() &&
       !device_->StartByteCounter()) {
     LOG(WARNING) << path_ << ": OnConnected: could not start byte counter";
+  }
+
+  // Make sure the name servers are set
+  if (device_ != NULL && provider_ != NULL) {
+    vector<std::string> nameservers;
+    device_->GetNameServers(&nameservers);
+    provider_->SetNameServers(nameservers);
+  } else {
+    LOG(WARNING) << path_ << ": OnConnected: missing device_ or provider_";
   }
 
   ReconsiderSendingUsageRequests();

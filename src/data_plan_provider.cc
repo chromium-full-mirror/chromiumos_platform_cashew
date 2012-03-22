@@ -4,12 +4,16 @@
 
 #include "src/data_plan_provider.h"
 
-#include <base/json/json_reader.h>
-#include <base/memory/scoped_ptr.h>
-#include <base/values.h>
-#include <glog/logging.h>
+#include <vector>
+
+#include <base/json/json_reader.h>  // NOLINT
+#include <base/memory/scoped_ptr.h>  // NOLINT
+#include <base/values.h>  // NOLINT
+#include <glog/logging.h>  // NOLINT
 
 #include "src/libcurl_http_fetcher.h"
+
+using std::vector;
 
 namespace cashew {
 
@@ -46,6 +50,10 @@ void DataPlanProvider::SetDelegate(DataPlanProviderDelegate *delegate) {
   if (delegate_ == NULL) {
     CancelPendingRequests();
   }
+}
+
+void DataPlanProvider::SetNameServers(const vector<std::string>& nameservers) {
+  fetcher_->set_nameservers(nameservers);
 }
 
 bool DataPlanProvider::RequestUsageUpdate() {

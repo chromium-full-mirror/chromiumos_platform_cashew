@@ -8,6 +8,7 @@
 #include <gmock/gmock.h>
 
 #include <string>
+#include <vector>
 
 #include "src/device.h"
 
@@ -19,6 +20,7 @@ class DeviceMock : public Device {
     MOCK_CONST_METHOD0(GetType, Device::Type());
     MOCK_CONST_METHOD0(GetCarrier, const std::string&());
     MOCK_CONST_METHOD0(GetInterface, const std::string&());
+    MOCK_CONST_METHOD1(GetNameServers, void(std::vector<std::string>*));
     MOCK_METHOD0(StartByteCounter, bool());
     MOCK_METHOD0(StopByteCounter, void());
     MOCK_METHOD0(ReadStats, bool());

@@ -8,14 +8,17 @@
 #include <glib.h>
 
 #include <string>
+#include <vector>
 
 #include <base/basictypes.h>  // NOLINT
+#include <base/memory/scoped_ptr.h>  // NOLINT
 #include <dbus-c++/dbus.h>  // NOLINT
 
 #include "src/byte_counter.h"
 #include "src/device.h"
 #include "src/flimflam_device_client_glue.h"
 #include "src/property_changed_handler.h"
+#include "src/ipconfig.h"
 
 namespace cashew {
 
@@ -36,6 +39,7 @@ class DeviceImpl : public Device,
     virtual Type GetType() const;
     virtual const std::string& GetCarrier() const;
     virtual const std::string& GetInterface() const;
+    virtual void GetNameServers(std::vector<std::string>* nameservers) const;
 
     // Flimflam Device D-Bus Proxy methods
 
@@ -80,6 +84,10 @@ class DeviceImpl : public Device,
     // interface name
     std::string interface_;
 
+    // pointer to an Ipconfig
+    // TODO(jglasgow): support multiple ipconfigs
+    scoped_ptr<Ipconfig> ipconfig_;
+
     // GetProperties timer glib source id
     // 0 means no source
     guint get_properties_source_id_;
@@ -114,6 +122,9 @@ class DeviceImpl : public Device,
 
     // we've received updated Type info from Flimflam
     void OnTypeUpdate(const std::string& type);
+
+    // the list of ipconfigs has changed
+    void OnIPConfigsUpdate(const std::vector< ::DBus::Path>& ipconfigs);
 
     // glib integration: static wrapper for GetDeviceProperties
     // takes object ptr as data and invokes object->GetDeviceProperties

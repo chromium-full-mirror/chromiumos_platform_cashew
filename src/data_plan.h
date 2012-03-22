@@ -15,7 +15,7 @@
 
 #include <base/basictypes.h>  // NOLINT
 #include <base/time.h>  // NOLINT
-#include <base/values.h>
+#include <base/values.h>  // NOLINT
 #include <dbus-c++/dbus.h>  // NOLINT
 
 namespace cashew {

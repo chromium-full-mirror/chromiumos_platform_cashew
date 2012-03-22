@@ -9,6 +9,8 @@
 #include "src/byte_counter.h"
 #include "src/service.h"
 
+using std::vector;
+
 namespace cashew {
 
 // Flimflam Device D-Bus identifiers
@@ -18,6 +20,7 @@ static const char *kFlimflamDeviceName = "org.chromium.flimflam";
 static const char *kFlimflamDeviceCarrierProperty = "Cellular.Carrier";
 static const char *kFlimflamDeviceInterfaceProperty = "Interface";
 static const char *kFlimflamDeviceTypeProperty = "Type";
+static const char *kFlimflamDeviceIPConfigsProperty = "IPConfigs";
 
 // Flimflam Device on-the-wire Type values
 static const char *kFlimflamDeviceTypeEthernet = "ethernet";
@@ -75,6 +78,15 @@ const std::string& DeviceImpl::GetInterface() const {
   return interface_;
 }
 
+void DeviceImpl::GetNameServers(vector<std::string>* nameservers) const {
+  if (ipconfig_ == NULL) {
+    LOG(WARNING) << path_ << ": ipconfig_ == NULL in GetNameServers";
+    return;
+  }
+
+  *nameservers = ipconfig_->GetNameServers();
+}
+
 // Flimflam Device D-Bus Proxy methods
 
 void DeviceImpl::PropertyChanged(const std::string& property_name,
@@ -101,6 +113,9 @@ void DeviceImpl::OnPropertyChanged(const PropertyChangedHandler *handler,
     OnInterfaceUpdate(new_value.reader().get_string());
   } else if (property_name == kFlimflamDeviceTypeProperty) {
     OnTypeUpdate(new_value.reader().get_string());
+  } else if (property_name == kFlimflamDeviceIPConfigsProperty) {
+    vector< ::DBus::Path> ipconfigs(new_value.operator vector< ::DBus::Path>());
+    OnIPConfigsUpdate(ipconfigs);
   } else {
     // we don't care about this property
   }
@@ -258,6 +273,24 @@ void DeviceImpl::OnTypeUpdate(const std::string& type) {
   }
 }
 
+void DeviceImpl::OnIPConfigsUpdate(const vector< ::DBus::Path>& ipconfigs) {
+  LOG(WARNING) << path_ << ": OnIPConfigsUpdate: " << ipconfigs.size()
+               << " ipconfigs";
+  // TODO(jglasgow): handle multiple IP configs
+  for (vector< ::DBus::Path>::const_iterator it(ipconfigs.begin());
+      it != ipconfigs.end();
+      it++) {
+    if (ipconfig_ != NULL && *it == ipconfig_->GetPath()) {
+      LOG(INFO) << path_ << ": OnIPConfigsUpdate: Using existing ipconfig: "
+                   << *it;
+      break;
+    }
+    LOG(INFO) << path_ << ": OnIPConfigsUpdate: Using ipconfig at " << *it;
+    ipconfig_.reset(Ipconfig::NewIpconfig(conn(), *it));
+    break;
+  }
+}
+
 // static
 gboolean DeviceImpl::StaticGetDevicePropertiesCallback(gpointer data) {
   DeviceImpl *device = reinterpret_cast<DeviceImpl*>(data);
@@ -330,6 +363,14 @@ bool DeviceImpl::GetDeviceProperties() {
     OnTypeUpdate(value.reader().get_string());
   } else {
     LOG(WARNING) << path_ << ": GetDeviceProperties: no Type property";
+  }
+  it = properties.find(kFlimflamDeviceIPConfigsProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    vector< ::DBus::Path> ipconfigs(value.operator vector< ::DBus::Path>());
+    OnIPConfigsUpdate(ipconfigs);
+  } else {
+    LOG(WARNING) << path_ << ": GetDeviceProperties: no IPConfigs property";
   }
   // don't expect to find Cellular.* properties if we're not a cellular device
   if (type_ != kTypeCellular) {
