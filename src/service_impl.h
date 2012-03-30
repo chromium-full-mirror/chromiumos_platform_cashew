@@ -150,6 +150,9 @@ class ServiceImpl : public Service,
     // do we think that we're the default service?
     bool is_default_service_;
 
+    // the http proxy used to fetch URLs.
+    std::string http_proxy_;
+
     // GetProperties timer glib source id
     // 0 means no source
     guint get_properties_source_id_;
@@ -184,6 +187,9 @@ class ServiceImpl : public Service,
 
     // We've received updated StickyHostRoute info from Flimflam
     void OnStickyHostRouteUpdate(const std::string& sticky_host_route);
+
+    // We've received updated HTTPProxyPort info from Shill
+  void OnHTTPProxyPortUpdate(uint16_t port);
 
     // glib integration: static wrapper for GetServiceProperties
     // takes object ptr as data and invokes object->GetServiceProperties()

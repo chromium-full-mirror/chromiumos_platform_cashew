@@ -20,9 +20,6 @@ static const char *kDefaultTechnologyProperty = "DefaultTechnology";
 static const char *kServicesProperty = "Services";
 static const char *kStateProperty = "State";
 
-// Flimflam service types
-static const char *kTypeCellular = "cellular";
-
 // GetFlimflamProperties retry interval
 static const guint kSecondsPerMinute = 60;
 static const guint kGetFlimflamPropertiesIntervalSeconds =
@@ -265,21 +262,11 @@ void ServiceManagerImpl::OnServicesUpdate(const ServicePathList& paths) {
   ServiceMap old_services = services_;
   services_.clear();
 
-  // Flimflam service types are embedded in their path names, so we can use
-  // the pattern "/cellular_" to decide which paths are cellular services.
-  static const std::string cellular_pattern = std::string("/") + kTypeCellular
-      + "_";
-
   // Walk paths in this update and see if they're new to us
   LOG(INFO) << "OnServicesUpdate: " << paths.size() << " service paths";
   ServicePathList::const_iterator it;
   for (it = paths.begin(); it != paths.end(); ++it) {
     const DBus::Path& path = *it;
-
-    // We only care about cellular services
-    if (path.find(cellular_pattern) == std::string::npos) {
-      continue;
-    }
 
     ServiceMap::iterator old_it = old_services.find(path);
     if (old_it != old_services.end()) {
@@ -335,12 +322,13 @@ void ServiceManagerImpl::OnDefaultServiceUpdate(const DBus::Path *path) {
       << ((path == NULL) ? "None" : *path);
   // check if new default service path (if any) corresponds to one of our
   // cellular services
-  Service *new_default_cellular_service = NULL;
+  Service *new_default_service = NULL;
   if (path != NULL) {
-    new_default_cellular_service = const_cast<Service*>(GetService(*path));
+    new_default_service = const_cast<Service*>(GetService(*path));
   }
-  if (new_default_cellular_service != NULL) {
-    SetDefaultCellularService(new_default_cellular_service);
+  if (new_default_service != NULL &&
+      new_default_service->GetType() == Service::kTypeCellular) {
+    SetDefaultCellularService(new_default_service);
   } else {
     ClearDefaultCellularService();
   }

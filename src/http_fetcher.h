@@ -53,7 +53,9 @@ class HttpFetcher {
   }
 
   // Begins the transfer to the specified URL.
-  virtual void BeginTransfer(const std::string& url) = 0;
+  virtual void BeginTransfer(const std::string& url,
+                             const std::string& proxy
+                             ) = 0;
 
   // Aborts the transfer. TransferComplete() will not be called on the
   // delegate.
@@ -72,6 +74,9 @@ class HttpFetcher {
  protected:
   // The URL we're actively fetching from
   std::string url_;
+
+  // The proxy to use, if any.
+  std::string proxy_;
 
   // The name servers to use (if not empty).
   std::vector<std::string> nameservers_;

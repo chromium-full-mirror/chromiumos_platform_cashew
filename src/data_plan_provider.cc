@@ -44,6 +44,14 @@ void DataPlanProvider::SetUsageUrl(const std::string& usage_url) {
   }
 }
 
+void DataPlanProvider::SetHttpProxy(const std::string& http_proxy) {
+  LOG(INFO) << carrier_ << ": SetHttpProxy: http_proxy = " << http_proxy;
+  if (http_proxy_ != http_proxy) {
+    http_proxy_ = http_proxy;
+    CancelPendingRequests();
+  }
+}
+
 void DataPlanProvider::SetDelegate(DataPlanProviderDelegate *delegate) {
   LOG(INFO) << carrier_ << ": SetDelegate";
   delegate_ = delegate;
@@ -74,7 +82,7 @@ bool DataPlanProvider::RequestUsageUpdate() {
   DCHECK(response_buffer_.empty());
   LOG(INFO) << carrier_ << ": RequestUsageUpdate: initiating request";
   request_in_progress_ = true;
-  fetcher_->BeginTransfer(usage_url_);
+  fetcher_->BeginTransfer(usage_url_, http_proxy_);
   return true;
 }
 

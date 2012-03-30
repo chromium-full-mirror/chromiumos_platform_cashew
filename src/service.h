@@ -65,7 +65,6 @@ class Service {
     } Type;
 
     // get type for this service
-    // NOTE: for now, should always be kTypeCellular
     virtual Type GetType() const = 0;
 
     // convert type string to Type enum value

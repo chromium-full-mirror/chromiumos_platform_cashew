@@ -6,6 +6,8 @@
 
 #include <glog/logging.h>
 
+#include <iostream>
+#include <sstream>
 #include <vector>
 
 #include "src/aggregator.h"
@@ -28,6 +30,9 @@ static const char *kFlimflamServiceStateProperty = "State";
 static const char *kFlimflamServiceTypeProperty = "Type";
 static const char *kFlimflamServiceUsageUrlProperty = "Cellular.UsageUrl";
 static const char *kFlimflamServiceStickyHostRouteProperty = "StickyHostRoute";
+
+// Shill Service property names
+static const char kShillServiceHTTPProxyPortProperty[] = "HTTPProxyPort";
 
 // Flimflam Service on-the-wire State values
 static const char *kFlimflamServiceStateIdle = "idle";
@@ -211,6 +216,8 @@ void ServiceImpl::OnPropertyChanged(const PropertyChangedHandler *handler,
     OnUsageUrlUpdate(new_value.reader().get_string());
   } else if (property_name == kFlimflamServiceStickyHostRouteProperty) {
     OnStickyHostRouteUpdate(new_value.reader().get_string());
+  } else if (property_name == kShillServiceHTTPProxyPortProperty) {
+    OnHTTPProxyPortUpdate(new_value.reader().get_uint16());
   } else {
     // we don't care about this property
   }
@@ -254,6 +261,9 @@ void ServiceImpl::OnCarrierUpdate(const std::string& carrier) {
     DeleteCarrierState();
     return;
   }
+
+  // Make sure the proxy is set correctly
+  provider_->SetHttpProxy(http_proxy_);
 
   // if we already have usage url, set new provider in motion
   if (!usage_url_.empty()) {
@@ -565,6 +575,11 @@ void ServiceImpl::OnDeviceUpdate(const DBus::Path& device_path) {
     return;
   }
 
+  // if this is not a cellular service, do not bother.
+  if (type_ != kTypeCellular) {
+    return;
+  }
+
   // if there's no existing device: make one
   device_ = Device::NewDevice(this, connection_, device_path);
   if (device_ == NULL) {
@@ -632,6 +647,21 @@ void ServiceImpl::OnStickyHostRouteUpdate(const std::string& sticky_route) {
   ReconsiderSendingUsageRequests();
 }
 
+void ServiceImpl::OnHTTPProxyPortUpdate(uint16_t port) {
+  LOG(INFO) << path_ << ": OnHTTPProxyPortUpdate: port = " << port;
+  std::ostringstream http_proxy;
+  if (port > 0) {
+    http_proxy << "localhost:" << port;
+  }
+  if (http_proxy_ == http_proxy.str())
+    return;
+  http_proxy_ = http_proxy.str();
+  if (provider_) {
+    provider_->SetHttpProxy(http_proxy_);
+    ReconsiderSendingUsageRequests();
+  }
+}
+
 // static
 gboolean ServiceImpl::StaticGetServicePropertiesCallback(gpointer data) {
   ServiceImpl *service = reinterpret_cast<ServiceImpl*>(data);
@@ -690,8 +720,17 @@ bool ServiceImpl::GetServiceProperties() {
   LOG(INFO) << path_ << ": GetServiceProperties: Received "
       << properties.size() << " properties";
 
-  // grab the properties in which we're interested
+  // Grab the properties in which we're interested.  Order is somewhat
+  // important.  Type should be fetched first because it is used by
+  // OnDeviceUpdate().
   PropertyMap::const_iterator it;
+  it = properties.find(kFlimflamServiceTypeProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    OnTypeUpdate(value.reader().get_string());
+  } else {
+    LOG(WARNING) << path_ << ": GetServiceProperties: no Type property";
+  }
   it = properties.find(kFlimflamServiceDeviceProperty);
   if (it != properties.end()) {
     const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
@@ -706,13 +745,6 @@ bool ServiceImpl::GetServiceProperties() {
   } else {
     LOG(WARNING) << path_ << ": GetServiceProperties: no State property";
   }
-  it = properties.find(kFlimflamServiceTypeProperty);
-  if (it != properties.end()) {
-    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
-    OnTypeUpdate(value.reader().get_string());
-  } else {
-    LOG(WARNING) << path_ << ": GetServiceProperties: no Type property";
-  }
   it = properties.find(kFlimflamServiceStickyHostRouteProperty);
   if (it != properties.end()) {
     const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
@@ -721,6 +753,15 @@ bool ServiceImpl::GetServiceProperties() {
     LOG(WARNING) << path_
         << ": GetServiceProperties: no StickyHostRoute property";
   }
+  it = properties.find(kShillServiceHTTPProxyPortProperty);
+  if (it != properties.end()) {
+    const DBus::Variant& value = static_cast<DBus::Variant>(it->second);
+    OnHTTPProxyPortUpdate(value.reader().get_uint16());
+  } else {
+    LOG(WARNING) << path_
+        << ": GetServiceProperties: no HTTPProxyPort property";
+  }
+
   // don't expect to find Cellular.* properties if we're not a cellular service
   if (type_ != kTypeCellular) {
     return true;
@@ -968,9 +1009,10 @@ bool ServiceImpl::ShouldSendUsageRequests() const {
     LOG(INFO) << path_ << ": ShouldSendUsageRequests: no: not connected";
     return false;
   }
-  if (sticky_host_route_.empty() && !IsDefaultService()) {
+  if (sticky_host_route_.empty() && http_proxy_.empty()
+      && !IsDefaultService()) {
     LOG(INFO) << path_ << ": ShouldSendUsageRequests: "
-        << "no: no sticky host route and not default service";
+        << "no: no sticky host route, no proxy and not default service";
     return false;
   }
   LOG(INFO) << path_ << ": ShouldSendUsageRequests: yes";

@@ -41,7 +41,7 @@ class LibcurlHttpFetcher : public HttpFetcher {
   ~LibcurlHttpFetcher();
 
   // Begins the transfer if it hasn't already begun.
-  virtual void BeginTransfer(const std::string& url);
+  virtual void BeginTransfer(const std::string& url, const std::string& proxy);
 
   // If the transfer is in progress, aborts the transfer early.
   // The transfer cannot be resumed.
@@ -77,7 +77,7 @@ class LibcurlHttpFetcher : public HttpFetcher {
   // Resumes a transfer where it left off. This will use the
   // HTTP Range: header to make a new connection from where the last
   // left off.
-  virtual void ResumeTransfer(const std::string& url);
+  virtual void ResumeTransfer(const std::string& url, const std::string& proxy);
 
   // These two methods are for glib main loop callbacks. They are called
   // when either a file descriptor is ready for work or when a timer

@@ -33,6 +33,9 @@ class DataPlanProvider: public HttpFetcherDelegate {
     // set usage API URL for which this proxy is configured
     virtual void SetUsageUrl(const std::string& usage_url);
 
+    // set http proxy to use when fetching requests
+    virtual void SetHttpProxy(const std::string& http_proxy);
+
     // set delegate interface that will receive callbacks from this proxy
     // it's ok to clear this by setting it to NULL
     virtual void SetDelegate(DataPlanProviderDelegate *delegate);
@@ -73,6 +76,9 @@ class DataPlanProvider: public HttpFetcherDelegate {
 
     // usage API URL
     std::string usage_url_;
+
+    // http proxy
+    std::string http_proxy_;
 
     // delegate
     DataPlanProviderDelegate *delegate_;

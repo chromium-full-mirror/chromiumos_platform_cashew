@@ -1,4 +1,6 @@
 *.o
+*.lo
+*.la
 src/cashewd
 cashew-*.tar.gz
 Makefile.in
@@ -15,3 +17,5 @@ install-sh
 missing
 stamp-h1
 .deps/
+.libs/
+src/*glue.h

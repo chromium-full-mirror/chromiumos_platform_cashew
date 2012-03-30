@@ -35,10 +35,12 @@ LibcurlHttpFetcher::~LibcurlHttpFetcher() {
   CleanUp();
 }
 
-void LibcurlHttpFetcher::ResumeTransfer(const std::string& url) {
+void LibcurlHttpFetcher::ResumeTransfer(const std::string& url,
+                                        const std::string& proxy) {
   LOG(INFO) << "Starting/Resuming transfer";
   CHECK(!transfer_in_progress_);
   url_ = url;
+  proxy_ = proxy;
   curl_multi_handle_ = curl_multi_init();
   CHECK(curl_multi_handle_);
 
@@ -113,19 +115,26 @@ void LibcurlHttpFetcher::ResumeTransfer(const std::string& url) {
                             kRequestTimeoutSeconds),
            CURLE_OK);
 
+  // Set the proxy
+  if (!proxy_.empty()) {
+    CHECK_EQ(curl_easy_setopt(curl_handle_, CURLOPT_PROXY, proxy_.c_str()),
+             CURLE_OK);
+  }
+
   CHECK_EQ(curl_multi_add_handle(curl_multi_handle_, curl_handle_), CURLM_OK);
   transfer_in_progress_ = true;
 }
 
 // Begins the transfer, which must not have already been started.
-void LibcurlHttpFetcher::BeginTransfer(const std::string& url) {
+void LibcurlHttpFetcher::BeginTransfer(const std::string& url,
+                                       const std::string& proxy) {
   LOG(INFO) << "BeginTransfer";
   transfer_size_ = -1;
   bytes_downloaded_ = 0;
   resume_offset_ = 0;
   retry_count_ = 0;
   http_response_code_ = 0;
-  ResumeTransfer(url);
+  ResumeTransfer(url, proxy);
   CurlPerformOnce();
 }
 
@@ -312,7 +321,7 @@ bool LibcurlHttpFetcher::FDCallback(GIOChannel *source,
 
 gboolean LibcurlHttpFetcher::RetryTimeoutCallback() {
   LOG(INFO) << "RetryTimeoutCallback";
-  ResumeTransfer(url_);
+  ResumeTransfer(url_, proxy_);
   CurlPerformOnce();
   return FALSE;  // Don't have glib auto call this callback again
 }
