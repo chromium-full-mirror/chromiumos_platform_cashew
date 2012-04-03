@@ -938,7 +938,9 @@ void ServiceImpl::OnCrosUsageErrorResult(const std::string& status) {
 
 // static
 bool ServiceImpl::IsConnectedState(State state) {
-  return (state == kStateReady || state == kStateOnline);
+  return (state == kStateReady ||
+          state == kStateOnline ||
+          state == kStatePortal);
 }
 
 bool ServiceImpl::IsConnected() const {
