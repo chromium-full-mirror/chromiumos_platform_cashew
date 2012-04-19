@@ -149,16 +149,21 @@ bool DeviceImpl::StartByteCounter() {
 
 void DeviceImpl::StopByteCounter() {
   if (byte_counter_running_) {
-    DeleteByteCounter();
+    // NOTE: |byte_counter_| is an instance of ProcfsByteCounter.
+    // The implementation of ProcfsByteCounter is subtle in a way that
+    // the destructor of ProcfsByteCounter may again trigger the invocation
+    // of this method. To prevent |byte_counter_| from being deleted again
+    // during its destruction, we must set |byte_counter_running_| to false
+    // before calling DeleteByteCounter to delete |byte_counter_|.
     byte_counter_running_ = false;
+    DeleteByteCounter();
     // notify |parent_|
     parent_->OnByteCounterStopped();
   }
-  DCHECK(byte_counter_ == NULL);
 }
 
 bool DeviceImpl::ReadStats() {
-  return byte_counter_->ReadStats();
+  return byte_counter_ ? byte_counter_->ReadStats() : false;
 }
 
 bool DeviceImpl::GetByteCounterStats(uint64 *rx_bytes, uint64 *tx_bytes) const {

@@ -376,7 +376,6 @@ bool DataPlan::OnByteCounterUpdate(DataPlanList *data_plans, Service *service,
   DCHECK(service != NULL);
   DCHECK(service_manager != NULL);
   DCHECK(device != NULL);
-  DCHECK(device->ByteCounterRunning());
 
   LOG(INFO) << "OnByteCounterUpdate: delta_rx_bytes = " << delta_rx_bytes
       << ", delta_tx_bytes = " << delta_tx_bytes;
